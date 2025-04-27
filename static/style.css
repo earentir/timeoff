@@ -1,0 +1,1330 @@
+/* Global styles */
+body {
+  font-family: Arial, sans-serif;
+  margin: 20px;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* Light Theme */
+body.light {
+  background: #f0f0f0;
+  color: #222;
+}
+
+/* Dark Theme */
+body.dark {
+  background: #222;
+  color: #f0f0f0;
+}
+
+/* Theme toggle button */
+#themeToggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+/* Controls styling */
+#controls {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#monthSelect, #yearSelect, #teamFilter {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background-color: #fff;
+  color: #333;
+}
+
+#employeeFilter {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  min-width: 180px;
+}
+
+/* Dark theme styles for controls */
+body.dark #monthSelect,
+body.dark #yearSelect,
+body.dark #teamFilter {
+  background-color: #444;
+  color: #f0f0f0;
+  border-color: #666;
+}
+
+body.dark #employeeFilter {
+  background-color: #444;
+  color: #f0f0f0;
+  border-color: #666;
+}
+
+/* Calendar grid container */
+#employeeList {
+  overflow-x: auto;
+  margin-bottom: 80px; /* Space for action button */
+}
+
+/* Row styling */
+.row {
+  display: flex;
+  align-items: center;
+}
+
+/* Day cells */
+.day-cell {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #ddd;
+  text-align: center;
+  line-height: 30px;
+  cursor: pointer;
+  box-sizing: border-box;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+/* Header cells */
+.header-cell {
+  font-weight: bold;
+}
+
+/* Employee name cell */
+.employee-name {
+  width: 200px;
+  padding-right: 10px;
+  border-right: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+/* Weekend styling */
+.weekend {
+  background-color: #8f8d8d;
+  color: #000;
+}
+
+/* Hover effect for rows */
+.row:hover {
+  background-color: #ffe4b5;
+  color: #000;
+}
+
+/* Ensure weekend cells keep their styling on row hover */
+.row:hover .weekend {
+  background-color: inherit;
+  color: inherit;
+}
+
+/* Drag and drop styles */
+.day-cell[draggable="true"] {
+  cursor: move;
+}
+
+.day-cell.dragging {
+  opacity: 0.5;
+}
+
+.day-cell.drag-over {
+  border: 2px dashed #666;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+/* Double-click indicator - subtle pulsing effect on hover */
+.day-cell:not(.weekend):not(.holiday):not(.day-off):hover::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: scale(0.8);
+  animation: pulse 1.5s infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0.3;
+  }
+}
+
+/* Day-off styling with a subtle indicator */
+.day-off {
+  position: relative;
+}
+
+.day-off::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  visibility: hidden;
+}
+
+.day-off:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Modal overlay */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+/* Modal content box */
+.modal-content {
+  padding: 20px;
+  border-radius: 5px;
+  width: 300px;
+  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Holiday info (read-only mode) */
+.holiday-info {
+  font-size: 1.1em;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+/* Modal buttons */
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.modal-buttons button {
+  margin-left: 10px;
+}
+
+/* Remove button styling */
+.remove-button {
+  background-color: #ff4c4c;
+  color: #fff;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+/* Modal theming using body classes */
+body.light .modal-content {
+  background-color: #fff;
+  color: #222;
+}
+
+body.dark .modal-content {
+  background-color: #333;
+  color: #f0f0f0;
+}
+
+/* Dark theme support */
+body.dark .day-off::after {
+  background: rgba(255, 255, 255, 0.9);
+  color: black;
+}
+
+/* Form group styling */
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+/* Tooltip for day-off notes */
+/* .day-cell[title]:hover::before {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+} */
+
+.day-cell[title]:hover::before {
+  display: none;
+}
+
+.day-cell[title]:hover::before {
+  opacity: 1;
+}
+
+/* Notification styling */
+.notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  color: white;
+  font-weight: bold;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  display: none;
+  max-width: 300px;
+  animation: slide-in 0.3s ease-out forwards;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateY(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Success notification */
+.notification.success {
+  background-color: #4CAF50;
+  border-left: 5px solid #388E3C;
+}
+
+/* Error notification */
+.notification.error {
+  background-color: #F44336;
+  border-left: 5px solid #D32F2F;
+}
+
+/* Info notification */
+.notification.info {
+  background-color: #2196F3;
+  border-left: 5px solid #1976D2;
+}
+
+/* Theme-specific styling */
+body.light .notification {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+body.dark .notification {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* User statistics modal styling */
+.user-stats-name {
+  font-size: 1.2em;
+  font-weight: bold;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ccc;
+}
+
+.user-stats-content {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.user-stats-content h4 {
+  margin: 15px 0 10px 0;
+}
+
+/* Stats table */
+.stats-table {
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.stats-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.stats-table th {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 2px solid #ddd;
+}
+
+.stats-table td {
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+.stats-table .total-row {
+  font-weight: bold;
+  border-top: 2px solid #ddd;
+}
+
+.color-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+/* Monthly distribution chart */
+.monthly-stats {
+  margin-top: 10px;
+  margin-bottom: 20px;
+}
+
+.month-bars {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 150px;
+  padding-top: 20px;
+}
+
+.month-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 20px;
+}
+
+.month-bar-container {
+  height: 120px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.month-bar {
+  width: 20px;
+  background-color: #4CAF50;
+  transition: height 0.3s ease;
+  border-radius: 2px 2px 0 0;
+}
+
+.month-count {
+  font-size: 10px;
+  margin-top: 2px;
+  height: 14px;
+}
+
+.month-name {
+  font-size: 10px;
+  margin-top: 5px;
+  text-align: center;
+}
+
+/* Dark/Light theme support for user stats modal */
+body.light .stats-table th,
+body.light .stats-table td {
+  border-color: #ddd;
+}
+
+body.dark .stats-table th,
+body.dark .stats-table td {
+  border-color: #555;
+}
+
+body.light .month-bar {
+  background-color: #4CAF50;
+}
+
+body.dark .month-bar {
+  background-color: #66BB6A;
+}
+
+body.light .user-stats-name {
+  border-color: #ddd;
+}
+
+body.dark .user-stats-name {
+  border-color: #555;
+}
+
+/* Team info in user stats */
+.user-team-info {
+  font-size: 0.9em;
+  color: #888;
+  margin-top: 5px;
+  font-weight: normal;
+}
+
+body.dark .user-team-info {
+  color: #aaa;
+}
+
+/* Mobile touch interaction styles */
+/* Long press visual feedback */
+.long-press-active {
+  transform: scale(0.95);
+  opacity: 0.8;
+  background-color: rgba(0, 0, 0, 0.1) !important;
+  transition: transform 0.15s ease, opacity 0.15s ease, background-color 0.15s ease;
+}
+
+body.dark .long-press-active {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Double tap hint for empty cells */
+.day-cell:not(.weekend):not(.holiday):not(.day-off):active::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 50%;
+  transform: scale(0);
+  animation: tap-ripple 0.4s ease-out;
+}
+
+body.dark .day-cell:not(.weekend):not(.holiday):not(.day-off):active::after {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes tap-ripple {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* Touch draggable visual indicator */
+.touch-draggable {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  position: relative;
+  transform: scale(1.05);
+  transition: all 0.2s ease;
+}
+
+body.dark .touch-draggable {
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+}
+
+/* Drag over indicator for touch */
+.drag-over {
+  border: 2px dashed #666 !important;
+  animation: pulse-border 1.5s infinite;
+}
+
+@keyframes pulse-border {
+  0% {
+    border-color: rgba(102, 102, 102, 0.5);
+  }
+  50% {
+    border-color: rgba(102, 102, 102, 1);
+  }
+  100% {
+    border-color: rgba(102, 102, 102, 0.5);
+  }
+}
+
+/* Make modals more touch-friendly */
+.modal-content {
+  border-radius: 8px;
+  transition: transform 0.3s ease;
+}
+
+/* Prevent text selection during touch interactions */
+.day-cell, .employee-name {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Better tap targets for all interactive elements */
+button, select, .day-cell, .employee-name {
+  touch-action: manipulation;
+}
+
+/* Improve scrolling on mobile */
+.user-stats-content {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Unified Action Button (FAB) */
+.action-fab {
+  position: fixed;
+  bottom: 25px;
+  right: 25px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background-color: #4CAF50;
+  color: white;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  z-index: 90;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  user-select: none;
+}
+
+body.dark .action-fab {
+  background-color: #66BB6A;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+.action-fab:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+.action-fab:active {
+  transform: scale(0.95);
+}
+
+/* Actions Menu */
+.actions-menu {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 95;
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+  padding: 20px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+body.dark .actions-menu {
+  background-color: #333;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.actions-menu.visible {
+  transform: translateY(0);
+}
+
+.actions-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.action-button {
+  width: 100%;
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background-color: #f0f0f0;
+  text-align: center;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  user-select: none;
+}
+
+body.dark .action-button {
+  background-color: #444;
+}
+
+.action-button:hover {
+  background-color: #e0e0e0;
+}
+
+body.dark .action-button:hover {
+  background-color: #555;
+}
+
+.action-button:active {
+  background-color: #d0d0d0;
+}
+
+body.dark .action-button:active {
+  background-color: #666;
+}
+
+.action-close-handle {
+  display: block;
+  width: 40px;
+  height: 4px;
+  background-color: #ccc;
+  border-radius: 2px;
+  margin: 0 auto 20px;
+  cursor: pointer;
+}
+
+.action-close-handle:hover {
+  background-color: #999;
+}
+
+body.dark .action-close-handle:hover {
+  background-color: #aaa;
+}
+
+/* Menu backdrop */
+.menu-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  z-index: 94;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+body.dark .menu-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.menu-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Highlight filtered rows */
+.row.filtered-match {
+  animation: highlight-row 2s ease-out;
+}
+
+@keyframes highlight-row {
+  0% { background-color: rgba(255, 222, 85, 0.4); }
+  100% { background-color: transparent; }
+}
+
+/* No results message */
+.no-results-message {
+  padding: 20px;
+  text-align: center;
+  font-style: italic;
+  color: #888;
+  width: 100%;
+}
+
+/* Fix for iOS auto-zoom on input focus */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  select,
+  textarea,
+  input {
+    font-size: 16px;
+  }
+}
+
+/* Responsive adaptations */
+@media (max-width: 768px) {
+  body {
+    margin: 10px;
+    font-size: 14px;
+  }
+
+  #controls {
+    gap: 8px;
+  }
+
+  #monthSelect, #yearSelect, #teamFilter, #employeeFilter {
+    font-size: 14px;
+    padding: 8px;
+  }
+
+  /* Make filter inputs more touch-friendly */
+  #employeeFilter {
+    flex-grow: 1;
+    min-width: unset;
+  }
+
+  #teamFilter {
+    flex-grow: 1;
+  }
+
+  /* Adjust action button size */
+  .action-fab {
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+    bottom: 20px;
+    right: 20px;
+  }
+
+  /* Adjust day cells for mobile */
+  .day-cell {
+    width: 25px;
+    height: 25px;
+    line-height: 25px;
+    font-size: 12px;
+  }
+
+  /* Make employee names narrower */
+  .employee-name {
+    width: 120px;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Modal adjustments */
+  .modal-content {
+    width: 90%;
+    max-width: 320px;
+    padding: 15px;
+  }
+
+  /* Make sure inputs are comfortable to tap */
+  .form-group input,
+  .form-group select,
+  .modal-buttons button {
+    padding: 10px;
+    font-size: 16px; /* Prevents iOS zoom on input focus */
+  }
+
+  /* Ensure buttons are big enough for tapping */
+  .modal-buttons button {
+    min-width: 80px;
+    min-height: 40px;
+  }
+
+  /* Notification adjustments */
+  .notification {
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+    padding: 10px 15px;
+    font-size: 14px;
+  }
+}
+
+/* Small mobile devices (phones, 480px and down) */
+@media (max-width: 480px) {
+  body {
+    margin: 5px;
+    font-size: 12px;
+  }
+
+  /* Further shrink calendar cells */
+  .day-cell {
+    width: 22px;
+    height: 22px;
+    line-height: 22px;
+    font-size: 11px;
+  }
+
+  /* Make employee names even narrower */
+  .employee-name {
+    width: 100px;
+  }
+
+  /* Full width modals for very small screens */
+  .modal-content {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 5px;
+    padding: 10px;
+  }
+
+  /* Ensure all modal content fits */
+  .user-stats-content {
+    max-height: 60vh;
+  }
+
+  /* Bring FAB closer to edge */
+  .action-fab {
+    bottom: 15px;
+    right: 15px;
+  }
+}
+
+/* Touch-friendly enhancements */
+@media (pointer: coarse) {
+  /* Increase spacing for better touch targets */
+  .modal-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .modal-buttons button {
+    margin: 0;
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+  }
+
+  /* Make action buttons more tappable */
+  .action-button {
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+
+  .action-close-handle {
+    height: 5px;
+    width: 50px;
+    margin-bottom: 25px;
+  }
+
+  /* Improve tap targets for employee names */
+  .employee-name {
+    padding: 10px 5px;
+    min-height: 25px;
+  }
+
+  /* Make notification visible above keyboard */
+  .notification {
+    bottom: auto;
+    top: 10px;
+  }
+}
+
+/* Landscape mode improvements */
+@media (max-width: 850px) and (orientation: landscape) {
+  /* Optimize for landscape on mobile */
+  #controls {
+    display: flex;
+    justify-content: flex-start;
+    gap: 15px;
+  }
+
+  /* Reduce modal height to ensure it fits */
+  .modal-content {
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+
+  /* Adjust chart height */
+  .month-bars {
+    height: 100px;
+  }
+
+  /* Position FAB on the side in landscape */
+  .action-fab {
+    bottom: 20px;
+    right: 20px;
+  }
+
+  /* Make action menu shorter in landscape */
+  .actions-menu {
+    max-height: 90vh;
+  }
+}
+
+/* Add persistent scrollbar for better usability */
+#employeeList::-webkit-scrollbar {
+  height: 6px;
+}
+
+#employeeList::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+#employeeList::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+body.dark #employeeList::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+body.dark #employeeList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Add a hint for scrollable content */
+@media (max-width: 768px) {
+  #employeeList::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 15px;
+    background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.1));
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  #employeeList:not(:hover)::after {
+    opacity: 1;
+  }
+
+  body.dark #employeeList::after {
+    background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.05));
+  }
+}
+
+/* Fix for sticky hover effects on mobile */
+@media (hover: hover) {
+  .day-cell:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+}
+
+/* Styling for days that are unavailable due to paired employee time off */
+.pair-day-off {
+  background-color: #f0f0f0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 5px,
+    rgba(150, 150, 150, 0.3) 5px,
+    rgba(150, 150, 150, 0.3) 10px
+  );
+  cursor: not-allowed;
+  color: #999;
+  position: relative;
+}
+
+body.dark .pair-day-off {
+  background-color: #333;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 5px,
+    rgba(100, 100, 100, 0.3) 5px,
+    rgba(100, 100, 100, 0.3) 10px
+  );
+  color: #777;
+}
+
+/* Styling for conflicts where both employees have day off */
+.pair-conflict {
+  position: relative;
+  overflow: hidden;
+}
+
+.pair-conflict::before {
+  content: '!';
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  background-color: #ff4c4c;
+  color: white;
+  font-size: 10px;
+  width: 12px;
+  height: 12px;
+  line-height: 12px;
+  text-align: center;
+  border-radius: 50%;
+  z-index: 2;
+}
+
+/* Pair indicator in employee list */
+.employee-name .pair-indicator {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 0.8em;
+  padding: 2px 4px;
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+body.dark .employee-name .pair-indicator {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Enhanced tooltip for pair days off */
+.pair-day-off[title]:hover::before {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: normal;
+  max-width: 200px;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.pair-day-off[title]:hover::before {
+  opacity: 1;
+}
+
+/* Enhance the appearance of paired employee info in user stats modal */
+.user-pair-info {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+body.dark .user-pair-info {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.user-pair-info h5 {
+  margin-top: 0;
+  margin-bottom: 5px;
+}
+
+/* Make sure pair days off are not clickable */
+.pair-day-off:hover::after {
+  display: none !important;
+}
+
+/* Do not show pulse animation for pair day off cells */
+.pair-day-off:hover {
+  background-color: inherit !important;
+  cursor: not-allowed;
+}
+
+/* Add a small icon to show paired relationships in the employee name */
+.employee-has-pair::after {
+  content: "👥";
+  font-size: 0.8em;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+/* Enhance the modal with pair-related info */
+.pair-info {
+  margin-top: 10px;
+  padding: 8px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+body.dark .pair-info {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Settings modal styles */
+.settings-section {
+  margin-bottom: 20px;
+  padding: 10px;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+body.dark .settings-section {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.settings-section h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1em;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+  width: auto !important;
+  margin-left: 5px;
+}
+
+/* Number input for max backups */
+input[type="number"] {
+  width: 60px !important;
+  text-align: center;
+}
+
+/* Add a small help text */
+.form-help {
+  font-size: 0.8em;
+  color: #888;
+  margin-top: 4px;
+}
+
+body.dark .form-help {
+  color: #aaa;
+}
+
+/**
+ * Custom tooltip implementation for day-off cells
+ * This will be added to your existing code
+ */
+ .custom-tooltip {
+   position: absolute;
+   background: rgba(0, 0, 0, 0.8);
+   color: white;
+   padding: 5px 8px;
+   border-radius: 4px;
+   font-size: 12px;
+   z-index: 1000;
+   pointer-events: none;
+   white-space: nowrap;
+   max-width: 250px;
+   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+   transition: opacity 0.3s;
+   opacity: 0;
+ }
+
+ .custom-tooltip.visible {
+   opacity: 1;
+ }
+
+ body.dark .custom-tooltip {
+   background: rgba(255, 255, 255, 0.9);
+   color: black;
+   box-shadow: 0 2px 5px rgba(255, 255, 255, 0.2);
+ }
+
+ /* Custom cursor for draggable cells */
+[draggable="true"] {
+  cursor: grab !important;
+}
+
+[draggable="true"]:active {
+  cursor: grabbing !important;
+}
+
+/* Custom tooltip for holiday cells */
+.holiday::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  visibility: hidden;
+}
+
+.holiday:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+body.dark .holiday::after {
+  background: rgba(255, 255, 255, 0.9);
+  color: black;
+}
+
+/* Custom tooltip for pair-day-off cells */
+.pair-day-off::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  visibility: hidden;
+}
+
+.pair-day-off:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+body.dark .pair-day-off::after {
+  background: rgba(255, 255, 255, 0.9);
+  color: black;
+}
+
+/* Custom tooltip for pair-conflict cells */
+.pair-conflict::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 0, 0, 0.8);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  visibility: hidden;
+}
+
+.pair-conflict:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+body.dark .pair-conflict::after {
+  background: rgba(255, 0, 0, 0.9);
+  color: white;
+}

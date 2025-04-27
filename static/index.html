@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Days Off Planning App</title>
+    <link rel="stylesheet" href="style.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#222222">
+    <meta name="mobile-web-app-capable" content="yes">
+  </head>
+  <body class="dark">
+    <!-- Theme Toggle (top right) -->
+    <div id="themeToggle">light</div>
+
+    <!-- Month and Year Selection with Filters -->
+    <div id="controls">
+      <select id="monthSelect"></select>
+      <select id="yearSelect"></select>
+      <input type="text" id="employeeFilter" placeholder="Filter employees..." />
+      <select id="teamFilter">
+        <option value="">All Teams/Depts</option>
+      </select>
+    </div>
+
+    <!-- Calendar Container (grid with header row and employee rows) -->
+    <div id="employeeList"></div>
+
+    <!-- Modal Dialog for editing a day off -->
+    <div id="modal" class="modal">
+      <div class="modal-content">
+        <h3>Edit Day Off</h3>
+        <!-- Holiday info area (read-only mode) -->
+        <div id="holidayInfo" class="holiday-info"></div>
+        <!-- Editable area (for new or editable day off entries) -->
+        <div id="editableArea">
+          <div class="form-group">
+            <label for="dayOffType">Type:</label>
+            <select id="dayOffType"></select>
+          </div>
+          <div class="form-group">
+            <label for="dayOffNote">Note (optional):</label>
+            <input type="text" id="dayOffNote" placeholder="Enter note..." />
+          </div>
+        </div>
+        <!-- Modal buttons: Cancel is always visible -->
+        <div class="modal-buttons">
+          <button id="cancelButton">Cancel</button>
+          <button id="saveButton">Save</button>
+          <button id="removeButton" class="remove-button">Remove Day Off</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- User Statistics Modal -->
+    <div id="userStatsModal" class="modal">
+      <div class="modal-content">
+        <h3>Employee Statistics</h3>
+        <div id="userStatsName" class="user-stats-name"></div>
+        <div id="userStatsContent" class="user-stats-content"></div>
+        <div class="modal-buttons">
+          <button id="userStatsCloseButton">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Action Button for All Devices -->
+    <div id="actionFab" class="action-fab">+</div>
+
+    <!-- Actions Menu for All Devices -->
+    <div id="actionsMenu" class="actions-menu">
+      <div class="action-close-handle"></div>
+      <div class="actions-title">Quick Actions</div>
+      <div class="action-button" id="actionShowToday">Show Today</div>
+      <div class="action-button" id="actionToggleTheme">Toggle Theme</div>
+      <div class="action-button" id="actionExportData">Export Data</div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

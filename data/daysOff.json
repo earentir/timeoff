@@ -1,0 +1,42 @@
+{
+  "dimogiannis": [],
+  "kati": [],
+  "mavroudis": [],
+  "pantazis": [
+    {
+      "date": "2025-04-14",
+      "type": "Volunteering"
+    },
+    {
+      "date": "2025-04-17",
+      "type": "Normal"
+    },
+    {
+      "date": "2025-04-15",
+      "type": "Normal"
+    },
+    {
+      "date": "2025-04-16",
+      "type": "Normal"
+    }
+  ],
+  "pappa": [],
+  "zagkanas": [
+    {
+      "date": "2025-04-22",
+      "type": "Normal"
+    },
+    {
+      "date": "2025-04-23",
+      "type": "Normal"
+    },
+    {
+      "date": "2025-04-24",
+      "type": "Normal"
+    },
+    {
+      "date": "2025-04-25",
+      "type": "Normal"
+    }
+  ]
+}
