@@ -54,6 +54,22 @@ body.dark {
   box-sizing: border-box;
 }
 
+#todayBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: #4CAF50;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  border: none;
+}
+.light #todayBtn { background-color: #66BB6A; color: #fff; }
+#todayBtn svg { width: 18px; height: 18px; }
+
 #monthSelect, #yearSelect, #teamFilter {
   padding: 6px 10px;
   border-radius: 4px;

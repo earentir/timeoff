@@ -1543,7 +1543,7 @@ function setupActionHandlers() {
   // Get DOM elements
   const actionFab = document.getElementById('actionFab') as HTMLDivElement;
   const actionsMenu = document.getElementById('actionsMenu') as HTMLDivElement;
-  const actionShowToday = document.getElementById('actionShowToday') as HTMLDivElement;
+  const todayBtn = document.getElementById('todayBtn') as HTMLButtonElement;
   const actionToggleTheme = document.getElementById('actionToggleTheme') as HTMLDivElement;
   const actionExportData = document.getElementById('actionExportData') as HTMLDivElement;
 
@@ -1580,8 +1580,8 @@ function setupActionHandlers() {
   });
 
   // Handle action buttons
-  if (actionShowToday) {
-    actionShowToday.addEventListener('click', () => {
+  if (todayBtn) {
+    todayBtn.addEventListener('click', () => {
       const today = new Date();
       currentMonth = today.getMonth();
       currentYear = today.getFullYear();
@@ -1612,9 +1612,7 @@ function setupActionHandlers() {
       }
       updateThemeToggleText();
 
-      // Hide menu
-      actionsMenu.classList.remove('visible');
-      backdrop.classList.remove('visible');
+      // Keep menu state unchanged; this is a header control
     });
   }
 
@@ -1851,7 +1849,12 @@ function initControls() {
     actionFabEl.style.top = '';
     (actionFabEl as any).style.inset = '';
     // Insert before monthSelect
+    // Place action button at the far left, before month; Today button should come immediately after the FAB
     controls.insertBefore(actionFabEl, monthSelect);
+    const todayBtn = document.getElementById('todayBtn');
+    if (todayBtn) {
+      controls.insertBefore(todayBtn, monthSelect);
+    }
   }
 }
 

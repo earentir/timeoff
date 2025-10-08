@@ -998,7 +998,7 @@ ${holidaysCsv}
   function setupActionHandlers() {
     const actionFab = document.getElementById("actionFab");
     const actionsMenu = document.getElementById("actionsMenu");
-    const actionShowToday2 = document.getElementById("actionShowToday");
+    const todayBtn = document.getElementById("todayBtn");
     const actionToggleTheme2 = document.getElementById("actionToggleTheme");
     const actionExportData2 = document.getElementById("actionExportData");
     if (!actionFab || !actionsMenu) {
@@ -1023,8 +1023,8 @@ ${holidaysCsv}
       actionsMenu.classList.remove("visible");
       backdrop.classList.remove("visible");
     });
-    if (actionShowToday2) {
-      actionShowToday2.addEventListener("click", () => {
+    if (todayBtn) {
+      todayBtn.addEventListener("click", () => {
         const today = /* @__PURE__ */ new Date();
         currentMonth = today.getMonth();
         currentYear = today.getFullYear();
@@ -1046,8 +1046,6 @@ ${holidaysCsv}
           document.body.classList.add("dark");
         }
         updateThemeToggleText();
-        actionsMenu.classList.remove("visible");
-        backdrop.classList.remove("visible");
       });
     }
     if (actionExportData2) {
@@ -1194,6 +1192,10 @@ ${holidaysCsv}
       actionFabEl.style.top = "";
       actionFabEl.style.inset = "";
       controls.insertBefore(actionFabEl, monthSelect);
+      const todayBtn = document.getElementById("todayBtn");
+      if (todayBtn) {
+        controls.insertBefore(todayBtn, monthSelect);
+      }
     }
   }
   function initTeamFilter() {
