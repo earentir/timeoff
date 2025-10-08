@@ -24,3 +24,5 @@ go.work.sum
 # env file
 .env
 data/employees.json
+data/daysOff.json
+data/backups/
