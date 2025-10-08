@@ -163,9 +163,15 @@ function saveModal() {
   // Check if paired employee has day off
   const pairedUsername = getPairedUsername(username);
   if (pairedUsername && hasUserDayOff(pairedUsername, isoDate)) {
-    showNotification("Cannot save: Your pair already has this day off", "error");
-    closeModal();
-    return;
+    // Allow override with confirmation and note
+    const confirmOverride = confirm("Your pair already has this day off. Override? (This will mark a conflict)");
+    if (!confirmOverride) {
+      closeModal();
+      return;
+    }
+    if (dayOffNoteInput && !dayOffNoteInput.value.trim()) {
+      dayOffNoteInput.value = "Override: pair conflict approved";
+    }
   }
 
   const selectedType = dayOffTypeSelect.value;
@@ -854,6 +860,71 @@ function exportCalendarDataAs(format: "json" | "xml" | "csv") {
   }
 }
 
+// Generate a single ICS for the current month for all visible employees
+function exportIcsForVisible() {
+  try {
+    const now = new Date();
+    const dtstamp = toIcsDateTime(now);
+    const monthStart = new Date(currentYear, currentMonth, 1);
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//timeoff//calendar//EN\nCALSCALE:GREGORIAN\n";
+
+    const visibleUsers = employeesData.employees.filter(e => e.visible);
+    for (const emp of visibleUsers) {
+      const entries = (daysOffData[emp.username] || []);
+      for (const entry of entries) {
+        const d = parseLocalDate(entry.date);
+        if (d.getFullYear() !== currentYear || d.getMonth() !== currentMonth) continue;
+        const dt = toIcsDate(entry.date); // all-day
+        const uid = `${emp.username}-${entry.date}@timeoff`;
+        const type = entry.type || "Day Off";
+        const note = entry.note ? ` (${entry.note})` : "";
+        const summary = `${emp.username}: ${type}${note}`;
+        const desc = summary;
+        ics += `BEGIN:VEVENT\nUID:${uid}\nDTSTAMP:${dtstamp}\nDTSTART;VALUE=DATE:${dt}\nDTEND;VALUE=DATE:${nextIcsDate(entry.date)}\nSUMMARY:${escapeIcs(summary)}\nDESCRIPTION:${escapeIcs(desc)}\nEND:VEVENT\n`;
+      }
+    }
+    ics += "END:VCALENDAR\n";
+
+    const dataUri = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+    const fname = `calendar-${currentYear}-${currentMonth + 1}.ics`;
+    const a = document.createElement('a');
+    a.setAttribute('href', dataUri);
+    a.setAttribute('download', fname);
+    a.click();
+    showNotification("Exported ICS successfully", "success");
+  } catch (e) {
+    console.error("ICS export error", e);
+    showNotification("Failed to export ICS", "error");
+  }
+}
+
+function toIcsDate(isoDate: string): string {
+  // YYYY-MM-DD -> YYYYMMDD in local time context
+  return isoDate.replaceAll('-', '');
+}
+
+function nextIcsDate(isoDate: string): string {
+  const d = parseLocalDate(isoDate);
+  const n = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  return `${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, '0')}${String(n.getDate()).padStart(2, '0')}`;
+}
+
+function toIcsDateTime(d: Date): string {
+  // UTC timestamp YYYYMMDDTHHMMSSZ
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
+  return `${y}${m}${day}T${hh}${mm}${ss}Z`;
+}
+
+function escapeIcs(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
 function convertExportToXML(obj: any): string {
   // Minimal XML conversion tailored to known structure
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -901,7 +972,8 @@ function convertExportToCSV(obj: any): string {
   return `# Employees\n${employeesCsv}\n\n# DaysOff\n${daysOffCsv}\n\n# Holidays\n${holidaysCsv}\n`;
 }
 
-function showExportDialog() {
+// Unified operations dialog (Export, Backups)
+function showOperationsDialog(initialTab: "export" | "backups" = "export") {
   let dlg = document.getElementById("exportDialog") as HTMLDivElement | null;
   if (!dlg) {
     dlg = document.createElement("div");
@@ -909,17 +981,43 @@ function showExportDialog() {
     dlg.className = "modal";
     dlg.innerHTML = `
       <div class="modal-content">
-        <h3>Export Data</h3>
-        <div class="form-group">
-          <label>Select format:</label>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button id="btnExportJson">JSON</button>
-            <button id="btnExportXml">XML</button>
-            <button id="btnExportCsv">CSV</button>
+        <h3>Operations</h3>
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+          <button id="tabExport">Export</button>
+          <button id="tabBackups">Backups</button>
+        </div>
+        <div id="opsExport" style="display:none;">
+          <div class="form-group">
+            <label>Select format:</label>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button id="btnExportJson">JSON</button>
+              <button id="btnExportXml">XML</button>
+              <button id="btnExportCsv">CSV</button>
+              <button id="btnExportIcs">ICS</button>
+            </div>
+          </div>
+        </div>
+        <div id="opsBackups" style="display:none;">
+          <div class="form-group">
+            <label>File:</label>
+            <select id="backupFileSelect">
+              <option value="employees">employees.json</option>
+              <option value="daysOff">daysOff.json</option>
+              <option value="holidays">holidays.json</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Available backups:</label>
+            <div id="backupList" style="max-height:200px; overflow:auto; border:1px solid #ccc; padding:6px;"></div>
+          </div>
+          <div class="form-group">
+            <label>Preview:</label>
+            <div id="backupMeta" class="form-help"></div>
+            <textarea id="backupPreview" style="width:100%; height:180px;"></textarea>
           </div>
         </div>
         <div class="modal-buttons">
-          <button id="exportCancel">Cancel</button>
+          <button id="exportCancel">Close</button>
         </div>
       </div>`;
     document.body.appendChild(dlg);
@@ -931,14 +1029,72 @@ function showExportDialog() {
       if (e.key === "Escape" && dlg && dlg.style.display === "flex") dlg.style.display = "none";
     });
   }
+  const tabExport = document.getElementById("tabExport") as HTMLButtonElement;
+  const tabBackups = document.getElementById("tabBackups") as HTMLButtonElement;
+  const panelExport = document.getElementById("opsExport") as HTMLDivElement;
+  const panelBackups = document.getElementById("opsBackups") as HTMLDivElement;
+  const showTab = (tab: "export" | "backups") => {
+    if (tab === "export") {
+      panelExport.style.display = "block";
+      panelBackups.style.display = "none";
+    } else {
+      panelExport.style.display = "none";
+      panelBackups.style.display = "block";
+      refreshBackupsList();
+    }
+  };
+  if (tabExport) tabExport.onclick = () => showTab("export");
+  if (tabBackups) tabBackups.onclick = () => showTab("backups");
+
   const btnJson = document.getElementById("btnExportJson");
   const btnXml = document.getElementById("btnExportXml");
   const btnCsv = document.getElementById("btnExportCsv");
+  const btnIcs = document.getElementById("btnExportIcs");
   const btnCancel = document.getElementById("exportCancel");
   if (btnJson) btnJson.onclick = () => { exportCalendarDataAs("json"); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
   if (btnXml) btnXml.onclick = () => { exportCalendarDataAs("xml"); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
   if (btnCsv) btnCsv.onclick = () => { exportCalendarDataAs("csv"); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
+  if (btnIcs) btnIcs.onclick = () => { exportIcsForVisible(); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
   if (btnCancel) btnCancel.onclick = () => { (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
+
+  // Backups wiring
+  const sel = document.getElementById("backupFileSelect") as HTMLSelectElement;
+  if (sel) sel.onchange = () => refreshBackupsList();
+  async function refreshBackupsList() {
+    const list = document.getElementById("backupList") as HTMLDivElement;
+    const meta = document.getElementById("backupMeta") as HTMLDivElement;
+    const preview = document.getElementById("backupPreview") as HTMLTextAreaElement;
+    if (!list || !sel) return;
+    list.innerHTML = "Loading...";
+    const prefix = (sel.value || "");
+    try {
+      const res = await fetch(`/api/backups?prefix=${prefix}`);
+      if (!res.ok) throw new Error("Failed to list backups");
+      const files: string[] = await res.json();
+      if (files.length === 0) { list.innerHTML = "No backups."; return; }
+      list.innerHTML = "";
+      files.forEach(fn => {
+        const a = document.createElement('a');
+        a.href = '#';
+        a.textContent = fn;
+        a.style.display = 'block';
+        a.onclick = async (e) => {
+          e.preventDefault();
+          const r = await fetch(`/api/backups?filename=${encodeURIComponent(fn)}`);
+          if (!r.ok) { meta.textContent = "Failed to load"; return; }
+          const j = await r.json();
+          meta.textContent = `checksum: ${j.checksum}`;
+          preview.value = j.content || '';
+        };
+        list.appendChild(a);
+      });
+    } catch (err) {
+      list.innerHTML = "Error loading backups";
+    }
+  }
+
+  // Show requested tab
+  showTab(initialTab);
   dlg!.style.display = "flex";
 }
 
@@ -990,6 +1146,50 @@ function setupEventListeners() {
 
   setupActionHandlers();
   console.log("All event listeners set up");
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    // Ignore when typing in inputs
+    const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+    // Go to today
+    if (e.key === 't') {
+      const today = new Date();
+      currentMonth = today.getMonth();
+      currentYear = today.getFullYear();
+      monthSelect.value = currentMonth.toString();
+      yearSelect.value = currentYear.toString();
+      buildCalendar(currentYear, currentMonth);
+      showNotification("Today", "info");
+      return;
+    }
+    // Prev/Next month
+    if (e.key === 'ArrowLeft') {
+      const d = new Date(currentYear, currentMonth - 1, 1);
+      currentYear = d.getFullYear();
+      currentMonth = d.getMonth();
+      monthSelect.value = currentMonth.toString();
+      yearSelect.value = currentYear.toString();
+      buildCalendar(currentYear, currentMonth);
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      const d = new Date(currentYear, currentMonth + 1, 1);
+      currentYear = d.getFullYear();
+      currentMonth = d.getMonth();
+      monthSelect.value = currentMonth.toString();
+      yearSelect.value = currentYear.toString();
+      buildCalendar(currentYear, currentMonth);
+      return;
+    }
+    // Quick search focus
+    if (e.key === '/' || (e.ctrlKey && e.key.toLowerCase() === 'k')) {
+      employeeFilter.focus();
+      e.preventDefault();
+      return;
+    }
+  });
 }
 
 
@@ -1283,8 +1483,8 @@ function setupActionHandlers() {
 
   if (actionExportData) {
     actionExportData.addEventListener('click', () => {
-      // Open export dialog instead of immediate JSON export
-      showExportDialog();
+      // Open unified operations dialog (default to export)
+      showOperationsDialog("export");
       // Hide menu
       actionsMenu.classList.remove('visible');
       backdrop.classList.remove('visible');
@@ -1654,6 +1854,20 @@ function buildCalendar(year, month) {
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
+  // Precompute percent off per day for visible employees
+  const percentByDay: number[] = [];
+  const visibleUsers = employeesData.employees.filter(e => e.visible).map(e => e.username);
+  for (let day = 1; day <= daysInMonth; day++) {
+    const isoDate = getLocalDateString(new Date(year, month, day));
+    const total = visibleUsers.length;
+    let off = 0;
+    visibleUsers.forEach(u => {
+      const arr = daysOffData[u] || [];
+      if (arr.some(e => e.date === isoDate)) off += 1;
+    });
+    percentByDay.push(total > 0 ? Math.round((off / total) * 100) : 0);
+  }
+
   // Create header row
   const headerRow = document.createElement("div");
   headerRow.classList.add("row");
@@ -1671,6 +1885,21 @@ function buildCalendar(year, month) {
     cell.textContent = day.toString();
     if (cellDate.getDay() === 0 || cellDate.getDay() === 6) {
       cell.classList.add("weekend");
+    }
+    // Add capacity indicator as a small badge on header cell
+    const pct = percentByDay[day - 1] || 0;
+    if (typeof pct === 'number') {
+      const badge = document.createElement('div');
+      badge.style.position = 'absolute';
+      badge.style.right = '0';
+      badge.style.bottom = '0';
+      badge.style.fontSize = '9px';
+      badge.style.padding = '0 2px';
+      badge.style.background = pct >= 75 ? '#ff6b6b' : (pct >= 50 ? '#ffd36a' : 'transparent');
+      badge.style.color = pct >= 50 ? '#000' : 'inherit';
+      badge.textContent = pct ? `${pct}%` : '';
+      cell.style.position = 'relative';
+      cell.appendChild(badge);
     }
     headerRow.appendChild(cell);
   }

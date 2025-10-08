@@ -80,9 +80,14 @@
     }
     const pairedUsername = getPairedUsername(username);
     if (pairedUsername && hasUserDayOff(pairedUsername, isoDate)) {
-      showNotification("Cannot save: Your pair already has this day off", "error");
-      closeModal();
-      return;
+      const confirmOverride = confirm("Your pair already has this day off. Override? (This will mark a conflict)");
+      if (!confirmOverride) {
+        closeModal();
+        return;
+      }
+      if (dayOffNoteInput && !dayOffNoteInput.value.trim()) {
+        dayOffNoteInput.value = "Override: pair conflict approved";
+      }
     }
     const selectedType = dayOffTypeSelect.value;
     const note = dayOffNoteInput.value.trim();
@@ -472,6 +477,69 @@
       showNotification("Failed to export data", "error");
     }
   }
+  function exportIcsForVisible() {
+    try {
+      const now = /* @__PURE__ */ new Date();
+      const dtstamp = toIcsDateTime(now);
+      const monthStart = new Date(currentYear, currentMonth, 1);
+      const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//timeoff//calendar//EN\nCALSCALE:GREGORIAN\n";
+      const visibleUsers = employeesData.employees.filter((e) => e.visible);
+      for (const emp of visibleUsers) {
+        const entries = daysOffData[emp.username] || [];
+        for (const entry of entries) {
+          const d = parseLocalDate(entry.date);
+          if (d.getFullYear() !== currentYear || d.getMonth() !== currentMonth) continue;
+          const dt = toIcsDate(entry.date);
+          const uid = `${emp.username}-${entry.date}@timeoff`;
+          const type = entry.type || "Day Off";
+          const note = entry.note ? ` (${entry.note})` : "";
+          const summary = `${emp.username}: ${type}${note}`;
+          const desc = summary;
+          ics += `BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:${dtstamp}
+DTSTART;VALUE=DATE:${dt}
+DTEND;VALUE=DATE:${nextIcsDate(entry.date)}
+SUMMARY:${escapeIcs(summary)}
+DESCRIPTION:${escapeIcs(desc)}
+END:VEVENT
+`;
+        }
+      }
+      ics += "END:VCALENDAR\n";
+      const dataUri = "data:text/calendar;charset=utf-8," + encodeURIComponent(ics);
+      const fname = `calendar-${currentYear}-${currentMonth + 1}.ics`;
+      const a = document.createElement("a");
+      a.setAttribute("href", dataUri);
+      a.setAttribute("download", fname);
+      a.click();
+      showNotification("Exported ICS successfully", "success");
+    } catch (e) {
+      console.error("ICS export error", e);
+      showNotification("Failed to export ICS", "error");
+    }
+  }
+  function toIcsDate(isoDate) {
+    return isoDate.replaceAll("-", "");
+  }
+  function nextIcsDate(isoDate) {
+    const d = parseLocalDate(isoDate);
+    const n = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+    return `${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, "0")}${String(n.getDate()).padStart(2, "0")}`;
+  }
+  function toIcsDateTime(d) {
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    const ss = String(d.getUTCSeconds()).padStart(2, "0");
+    return `${y}${m}${day}T${hh}${mm}${ss}Z`;
+  }
+  function escapeIcs(s) {
+    return s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+  }
   function convertExportToXML(obj) {
     const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
     const employeeXml = obj.employeesData.employees.map((e) => {
@@ -529,7 +597,7 @@ ${daysOffCsv}
 ${holidaysCsv}
 `;
   }
-  function showExportDialog() {
+  function showOperationsDialog(initialTab = "export") {
     let dlg = document.getElementById("exportDialog");
     if (!dlg) {
       dlg = document.createElement("div");
@@ -537,17 +605,43 @@ ${holidaysCsv}
       dlg.className = "modal";
       dlg.innerHTML = `
       <div class="modal-content">
-        <h3>Export Data</h3>
-        <div class="form-group">
-          <label>Select format:</label>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button id="btnExportJson">JSON</button>
-            <button id="btnExportXml">XML</button>
-            <button id="btnExportCsv">CSV</button>
+        <h3>Operations</h3>
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+          <button id="tabExport">Export</button>
+          <button id="tabBackups">Backups</button>
+        </div>
+        <div id="opsExport" style="display:none;">
+          <div class="form-group">
+            <label>Select format:</label>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button id="btnExportJson">JSON</button>
+              <button id="btnExportXml">XML</button>
+              <button id="btnExportCsv">CSV</button>
+              <button id="btnExportIcs">ICS</button>
+            </div>
+          </div>
+        </div>
+        <div id="opsBackups" style="display:none;">
+          <div class="form-group">
+            <label>File:</label>
+            <select id="backupFileSelect">
+              <option value="employees">employees.json</option>
+              <option value="daysOff">daysOff.json</option>
+              <option value="holidays">holidays.json</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Available backups:</label>
+            <div id="backupList" style="max-height:200px; overflow:auto; border:1px solid #ccc; padding:6px;"></div>
+          </div>
+          <div class="form-group">
+            <label>Preview:</label>
+            <div id="backupMeta" class="form-help"></div>
+            <textarea id="backupPreview" style="width:100%; height:180px;"></textarea>
           </div>
         </div>
         <div class="modal-buttons">
-          <button id="exportCancel">Cancel</button>
+          <button id="exportCancel">Close</button>
         </div>
       </div>`;
       document.body.appendChild(dlg);
@@ -558,9 +652,26 @@ ${holidaysCsv}
         if (e.key === "Escape" && dlg && dlg.style.display === "flex") dlg.style.display = "none";
       });
     }
+    const tabExport = document.getElementById("tabExport");
+    const tabBackups = document.getElementById("tabBackups");
+    const panelExport = document.getElementById("opsExport");
+    const panelBackups = document.getElementById("opsBackups");
+    const showTab = (tab) => {
+      if (tab === "export") {
+        panelExport.style.display = "block";
+        panelBackups.style.display = "none";
+      } else {
+        panelExport.style.display = "none";
+        panelBackups.style.display = "block";
+        refreshBackupsList();
+      }
+    };
+    if (tabExport) tabExport.onclick = () => showTab("export");
+    if (tabBackups) tabBackups.onclick = () => showTab("backups");
     const btnJson = document.getElementById("btnExportJson");
     const btnXml = document.getElementById("btnExportXml");
     const btnCsv = document.getElementById("btnExportCsv");
+    const btnIcs = document.getElementById("btnExportIcs");
     const btnCancel = document.getElementById("exportCancel");
     if (btnJson) btnJson.onclick = () => {
       exportCalendarDataAs("json");
@@ -574,9 +685,56 @@ ${holidaysCsv}
       exportCalendarDataAs("csv");
       document.getElementById("exportDialog").style.display = "none";
     };
+    if (btnIcs) btnIcs.onclick = () => {
+      exportIcsForVisible();
+      document.getElementById("exportDialog").style.display = "none";
+    };
     if (btnCancel) btnCancel.onclick = () => {
       document.getElementById("exportDialog").style.display = "none";
     };
+    const sel = document.getElementById("backupFileSelect");
+    if (sel) sel.onchange = () => refreshBackupsList();
+    function refreshBackupsList() {
+      return __async(this, null, function* () {
+        const list = document.getElementById("backupList");
+        const meta = document.getElementById("backupMeta");
+        const preview = document.getElementById("backupPreview");
+        if (!list || !sel) return;
+        list.innerHTML = "Loading...";
+        const prefix = sel.value || "";
+        try {
+          const res = yield fetch(`/api/backups?prefix=${prefix}`);
+          if (!res.ok) throw new Error("Failed to list backups");
+          const files = yield res.json();
+          if (files.length === 0) {
+            list.innerHTML = "No backups.";
+            return;
+          }
+          list.innerHTML = "";
+          files.forEach((fn) => {
+            const a = document.createElement("a");
+            a.href = "#";
+            a.textContent = fn;
+            a.style.display = "block";
+            a.onclick = (e) => __async(this, null, function* () {
+              e.preventDefault();
+              const r = yield fetch(`/api/backups?filename=${encodeURIComponent(fn)}`);
+              if (!r.ok) {
+                meta.textContent = "Failed to load";
+                return;
+              }
+              const j = yield r.json();
+              meta.textContent = `checksum: ${j.checksum}`;
+              preview.value = j.content || "";
+            });
+            list.appendChild(a);
+          });
+        } catch (err) {
+          list.innerHTML = "Error loading backups";
+        }
+      });
+    }
+    showTab(initialTab);
     dlg.style.display = "flex";
   }
   function setupEventListeners() {
@@ -617,6 +775,44 @@ ${holidaysCsv}
     });
     setupActionHandlers();
     console.log("All event listeners set up");
+    document.addEventListener("keydown", (e) => {
+      var _a, _b;
+      const tag = (_b = (_a = e.target) == null ? void 0 : _a.tagName) == null ? void 0 : _b.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if (e.key === "t") {
+        const today = /* @__PURE__ */ new Date();
+        currentMonth = today.getMonth();
+        currentYear = today.getFullYear();
+        monthSelect.value = currentMonth.toString();
+        yearSelect.value = currentYear.toString();
+        buildCalendar(currentYear, currentMonth);
+        showNotification("Today", "info");
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        const d = new Date(currentYear, currentMonth - 1, 1);
+        currentYear = d.getFullYear();
+        currentMonth = d.getMonth();
+        monthSelect.value = currentMonth.toString();
+        yearSelect.value = currentYear.toString();
+        buildCalendar(currentYear, currentMonth);
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        const d = new Date(currentYear, currentMonth + 1, 1);
+        currentYear = d.getFullYear();
+        currentMonth = d.getMonth();
+        monthSelect.value = currentMonth.toString();
+        yearSelect.value = currentYear.toString();
+        buildCalendar(currentYear, currentMonth);
+        return;
+      }
+      if (e.key === "/" || e.ctrlKey && e.key.toLowerCase() === "k") {
+        employeeFilter.focus();
+        e.preventDefault();
+        return;
+      }
+    });
   }
   function setupTouchEvents() {
     console.log("Setting up touch event handlers");
@@ -813,7 +1009,7 @@ ${holidaysCsv}
     }
     if (actionExportData2) {
       actionExportData2.addEventListener("click", () => {
-        showExportDialog();
+        showOperationsDialog("export");
         actionsMenu.classList.remove("visible");
         backdrop.classList.remove("visible");
       });
@@ -1038,6 +1234,18 @@ ${holidaysCsv}
     employeeListDiv.innerHTML = "";
     console.log(`Building calendar with year=${year}, month=${month} (${new Date(year, month, 1).toLocaleString("default", { month: "long" })})`);
     const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const percentByDay = [];
+    const visibleUsers = employeesData.employees.filter((e) => e.visible).map((e) => e.username);
+    for (let day = 1; day <= daysInMonth; day++) {
+      const isoDate = getLocalDateString(new Date(year, month, day));
+      const total = visibleUsers.length;
+      let off = 0;
+      visibleUsers.forEach((u) => {
+        const arr = daysOffData[u] || [];
+        if (arr.some((e) => e.date === isoDate)) off += 1;
+      });
+      percentByDay.push(total > 0 ? Math.round(off / total * 100) : 0);
+    }
     const headerRow = document.createElement("div");
     headerRow.classList.add("row");
     const emptyCell = document.createElement("div");
@@ -1052,6 +1260,20 @@ ${holidaysCsv}
       cell.textContent = day.toString();
       if (cellDate.getDay() === 0 || cellDate.getDay() === 6) {
         cell.classList.add("weekend");
+      }
+      const pct = percentByDay[day - 1] || 0;
+      if (typeof pct === "number") {
+        const badge = document.createElement("div");
+        badge.style.position = "absolute";
+        badge.style.right = "0";
+        badge.style.bottom = "0";
+        badge.style.fontSize = "9px";
+        badge.style.padding = "0 2px";
+        badge.style.background = pct >= 75 ? "#ff6b6b" : pct >= 50 ? "#ffd36a" : "transparent";
+        badge.style.color = pct >= 50 ? "#000" : "inherit";
+        badge.textContent = pct ? `${pct}%` : "";
+        cell.style.position = "relative";
+        cell.appendChild(badge);
       }
       headerRow.appendChild(cell);
     }

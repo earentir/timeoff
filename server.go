@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -136,7 +137,26 @@ func handleHolidays(w http.ResponseWriter, r *http.Request) {
 func handleBackups(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		// List backups for a file
+		// Return content + checksum when filename provided
+		if filename := r.URL.Query().Get("filename"); filename != "" {
+			fname := filepath.Base(filename)
+			path := filepath.Join(backupDir, fname)
+			data, err := os.ReadFile(path)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error reading backup: %v", err), http.StatusInternalServerError)
+				return
+			}
+			resp := map[string]any{
+				"filename": fname,
+				"checksum": computeETag(data),
+				"content":  string(data),
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		// List backups for a file prefix
 		filePrefix := r.URL.Query().Get("prefix")
 		if filePrefix == "" {
 			http.Error(w, "Missing 'prefix' parameter", http.StatusBadRequest)
@@ -241,6 +261,12 @@ func updateJSONFile(w http.ResponseWriter, r *http.Request, filePath string) {
 		return
 	}
 
+	// Basic schema validation depending on file
+	if err := validateByPath(filePath, jsonData); err != nil {
+		http.Error(w, fmt.Sprintf("Schema validation failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
 	// Pretty print the JSON
 	prettyJSON, err := json.MarshalIndent(jsonData, "", "  ")
 	if err != nil {
@@ -248,12 +274,24 @@ func updateJSONFile(w http.ResponseWriter, r *http.Request, filePath string) {
 		return
 	}
 
-	// Create a backup of the existing file if it exists
+	// Concurrency: If-Match check when file exists
 	if _, err := os.Stat(filePath); err == nil {
+		ifMatch := r.Header.Get("If-Match")
+		if ifMatch != "" {
+			current, _ := os.ReadFile(filePath)
+			if computeETag(current) != ifMatch {
+				w.Header().Set("ETag", computeETag(current))
+				http.Error(w, "Precondition Failed", http.StatusPreconditionFailed)
+				return
+			}
+		}
+
+		// Create a backup of the existing file if it exists
 		backupPath := filePath + ".bak." + time.Now().Format("20060102-150405")
 		if err := os.Rename(filePath, backupPath); err != nil {
 			log.Printf("Warning: could not create backup of %s: %v", filePath, err)
 		}
+		writeChecksum(backupPath)
 	}
 
 	// Write the new JSON to file
@@ -262,7 +300,8 @@ func updateJSONFile(w http.ResponseWriter, r *http.Request, filePath string) {
 		return
 	}
 
-	// Respond with success
+	// Respond with success and new ETag
+	w.Header().Set("ETag", computeETag(prettyJSON))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"success": true, "message": "File updated successfully"}`))
@@ -285,6 +324,12 @@ func updateJSONFileWithBackup(w http.ResponseWriter, r *http.Request, filePath s
 		return
 	}
 
+	// Basic schema validation depending on file
+	if err := validateByPath(filePath, jsonData); err != nil {
+		http.Error(w, fmt.Sprintf("Schema validation failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
 	// Pretty print the JSON
 	prettyJSON, err := json.MarshalIndent(jsonData, "", "  ")
 	if err != nil {
@@ -295,8 +340,19 @@ func updateJSONFileWithBackup(w http.ResponseWriter, r *http.Request, filePath s
 	// Get the base filename without path
 	baseFilename := filepath.Base(filePath)
 
-	// Create a backup in the backups directory if file exists
+	// Concurrency: If-Match when file exists
 	if _, err := os.Stat(filePath); err == nil {
+		ifMatch := r.Header.Get("If-Match")
+		if ifMatch != "" {
+			current, _ := os.ReadFile(filePath)
+			if computeETag(current) != ifMatch {
+				w.Header().Set("ETag", computeETag(current))
+				http.Error(w, "Precondition Failed", http.StatusPreconditionFailed)
+				return
+			}
+		}
+
+		// Create a backup in the backups directory
 		timestamp := time.Now().Format("20060102-150405")
 		backupFilename := fmt.Sprintf("%s.%s.json", strings.TrimSuffix(baseFilename, ".json"), timestamp)
 		backupPath := filepath.Join(backupDir, backupFilename)
@@ -310,6 +366,7 @@ func updateJSONFileWithBackup(w http.ResponseWriter, r *http.Request, filePath s
 				log.Printf("Warning: could not create backup of %s: %v", filePath, err)
 			} else {
 				log.Printf("Created backup: %s", backupPath)
+				writeChecksum(backupPath)
 
 				// Clean up old backups
 				if err := cleanupOldBackups(baseFilename, maxBackups); err != nil {
@@ -325,10 +382,58 @@ func updateJSONFileWithBackup(w http.ResponseWriter, r *http.Request, filePath s
 		return
 	}
 
-	// Respond with success
+	// Respond with success and new ETag
+	w.Header().Set("ETag", computeETag(prettyJSON))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"success": true, "message": "File updated successfully with backup"}`))
+}
+
+// computeETag returns a weak ETag of the content
+func computeETag(b []byte) string {
+	if b == nil {
+		return "\"0\""
+	}
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("\"%x\"", sum[:8])
+}
+
+// writeChecksum writes a .sha256 file alongside the backup for integrity
+func writeChecksum(path string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	sum := sha256.Sum256(b)
+	_ = os.WriteFile(path+".sha256", []byte(fmt.Sprintf("%x\n", sum)), 0644)
+}
+
+// validateByPath performs minimal schema checks per JSON file type
+func validateByPath(path string, data interface{}) error {
+	base := filepath.Base(path)
+	switch base {
+	case "employees.json":
+		m, ok := data.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("employees.json must be an object")
+		}
+		if _, ok := m["employees"]; !ok {
+			return fmt.Errorf("missing employees array")
+		}
+	case "daysOff.json":
+		if _, ok := data.(map[string]interface{}); !ok {
+			return fmt.Errorf("daysOff.json must be an object keyed by username")
+		}
+	case "holidays.json":
+		m, ok := data.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("holidays.json must be an object")
+		}
+		if _, ok := m["holidays"]; !ok {
+			return fmt.Errorf("missing holidays array")
+		}
+	}
+	return nil
 }
 
 // List backups for a specific file prefix
