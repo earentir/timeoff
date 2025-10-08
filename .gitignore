@@ -26,3 +26,4 @@ go.work.sum
 data/employees.json
 data/daysOff.json
 data/backups/
+timeoff
