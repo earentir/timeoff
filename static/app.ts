@@ -232,10 +232,8 @@ function saveModal() {
       // Set tooltip for day off with type and note information
       const carry = dayOffEntry.useCarryover ? " (carryover)" : "";
       if (note) {
-        cell.title = `${selectedType}: ${note}${carry}`;
         cell.setAttribute('data-tooltip', `${selectedType}: ${note}${carry}`);
       } else {
-        cell.title = `${selectedType}${carry}`;
         cell.setAttribute('data-tooltip', `${selectedType}${carry}`);
       }
 
@@ -335,11 +333,7 @@ function updatePairedEmployeeCalendar(username: string, isoDate: string) {
     } else {
       // If user doesn't have day off, remove the pair-day-off class
       cell.classList.remove('pair-day-off');
-      if (htmlCell.title === "Unavailable: Your pair has time off this day" ||
-          htmlCell.title.startsWith("Unavailable: Your pair")) {
-        htmlCell.title = "";
-        htmlCell.removeAttribute('data-tooltip');
-      }
+      htmlCell.removeAttribute('data-tooltip');
     }
   });
 }
@@ -2030,7 +2024,7 @@ function buildCalendar(year, month) {
     }
     // Add capacity info as a tooltip on header cell
     const pct = percentByDay[day - 1] || 0;
-    cell.title = `Capacity: ${pct}% off`;
+    cell.setAttribute('data-tooltip', `Capacity: ${pct}% off`);
     headerRow.appendChild(cell);
   }
 
@@ -2094,7 +2088,7 @@ function buildCalendar(year, month) {
     }
 
     if (tooltipParts.length > 0) {
-      nameDiv.title = tooltipParts.join("\n");
+      nameDiv.setAttribute('data-tooltip', tooltipParts.join("\n"));
     }
 
     nameDiv.addEventListener("contextmenu", (e) => {
@@ -2120,8 +2114,7 @@ function buildCalendar(year, month) {
       if (holiday) {
         cell.style.backgroundColor = employeesData.dayOffTypes["Holiday"].background;
         cell.style.color = employeesData.dayOffTypes["Holiday"].foreground;
-        cell.title = holiday.name;
-        cell.setAttribute('data-tooltip', holiday.name); // Add this line
+        cell.setAttribute('data-tooltip', holiday.name);
         cell.classList.add("holiday");
       } else {
         const userDaysOff = daysOffData[employee.username] || [];
@@ -2140,10 +2133,8 @@ function buildCalendar(year, month) {
           // Set tooltip with data-tooltip attribute
           if (dayOffEntry.note) {
             cell.setAttribute('data-tooltip', `${dayOffEntry.type}: ${dayOffEntry.note}`);
-            cell.title = `${dayOffEntry.type}: ${dayOffEntry.note}`; // Keep this for backward compatibility
           } else {
             cell.setAttribute('data-tooltip', dayOffEntry.type);
-            cell.title = dayOffEntry.type; // Keep this for backward compatibility
           }
 
           cell.classList.add("day-off");
@@ -2154,7 +2145,6 @@ function buildCalendar(year, month) {
           // Check for conflicts
           if (isPairedDayOff) {
             cell.classList.add('pair-conflict');
-            cell.title = "Warning: Both you and your pair have this day off";
             cell.setAttribute('data-tooltip', "Warning: Both you and your pair have this day off");
           }
         } else if (isPairedDayOff) {
@@ -2190,7 +2180,6 @@ function buildCalendar(year, month) {
           }
 
           const tooltipMessage = `Unavailable: Your pair (${pairedName}) has time off this day${typeInfo ? ` - ${typeInfo}` : ''}`;
-          cell.title = tooltipMessage;
           cell.setAttribute('data-tooltip', tooltipMessage);
         } else {
           // No conflicts, regular cell
@@ -2347,8 +2336,19 @@ function showUserStatistics(username, event) {
   statsHtml += '<div class="stats-table">';
   statsHtml += `<div class="form-group">
     <button id="openAllowanceDialogBtn">Set Allowance for ${currentYear}</button>
-    <div class="form-help">Prev ${prevYear}: ${effPrevAllowance} (used ${usedPrev.total} + used in ${currentYear} as carry ${usedCurr.carryover} → remaining ${prevUnused})</div>
-    <div class="form-help">Curr ${currentYear}: ${allowanceCurrMaybe ?? '(fallback to prev)'} | Used current ${usedCurr.base}, scheduled to next year (carry) ${usedCurr.nextYearCarryFromThisYear} → remaining base ${currRemaining}; Available now ${availableNow}</div>
+    <div class="form-help"></div>
+    <div class="allowance-block">
+      <div class="allowance-year">${prevYear}: ${effPrevAllowance}</div>
+      <div class="allowance-line">Used: ${usedPrev.total}</div>
+      <div class="allowance-line">Used in ${currentYear} (Carry): ${usedCurr.carryover}</div>
+      <div class="allowance-line">Remaining: ${prevUnused}</div>
+    </div>
+    <div class="allowance-block" style="margin-top:6px;">
+      <div class="allowance-year">${currentYear}: ${effCurrAllowance}</div>
+      <div class="allowance-line">Used: ${usedCurr.base}</div>
+      <div class="allowance-line">Used in ${currentYear + 1} (Carry): ${usedCurr.nextYearCarryFromThisYear}</div>
+      <div class="allowance-line">Remaining: ${currRemaining}</div>
+    </div>
   </div>`;
   statsHtml += "</div>";
 
@@ -2498,9 +2498,9 @@ function setupDragEvents(cell, username, dayOffEntry) {
   // Set correct tooltip content
   const carry = dayOffEntry.useCarryover ? " (carryover)" : "";
   if (dayOffEntry.note) {
-    cell.title = `${dayOffEntry.type}: ${dayOffEntry.note}${carry}`;
+    cell.setAttribute('data-tooltip', `${dayOffEntry.type}: ${dayOffEntry.note}${carry}`);
   } else {
-    cell.title = `${dayOffEntry.type}${carry}`;
+    cell.setAttribute('data-tooltip', `${dayOffEntry.type}${carry}`);
   }
 
   // Add custom tooltip functionality
@@ -2574,10 +2574,8 @@ function setupDropTarget(cell, username, isoDate) {
       // Set tooltip after drag and drop
       const carry = newEntry.useCarryover ? " (carryover)" : "";
       if (newEntry.note) {
-        cell.title = `${newEntry.type}: ${newEntry.note}${carry}`;
         cell.setAttribute('data-tooltip', `${newEntry.type}: ${newEntry.note}${carry}`);
       } else {
-        cell.title = `${newEntry.type}${carry}`;
         cell.setAttribute('data-tooltip', `${newEntry.type}${carry}`);
       }
 
@@ -2589,7 +2587,7 @@ function setupDropTarget(cell, username, isoDate) {
       // Completely reset the original cell
       draggedCell.style.backgroundColor = "";
       draggedCell.style.color = "";
-      draggedCell.title = ""; // Clear the tooltip from original cell
+      draggedCell.removeAttribute('data-tooltip');
       draggedCell.removeAttribute('data-tooltip'); // Add this line
       draggedCell.classList.remove("day-off");
       draggedCell.removeAttribute("draggable");
@@ -2667,8 +2665,7 @@ function addQuickDayOff(username, isoDate, cell) {
   setupDragEvents(cell, username, dayOffEntry);
 
   // Set tooltip for quick added day off
-  cell.title = "Normal";
-  cell.setAttribute('data-tooltip', "Normal"); // Add this line
+  cell.setAttribute('data-tooltip', "Normal");
 
   console.log("Quick day off added for", username, "on", isoDate);
   saveData(username);
