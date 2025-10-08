@@ -968,6 +968,11 @@ ${holidaysCsv}
         element.classList.remove("touch-draggable");
       });
     }, { passive: true });
+    const grid = document.getElementById("employeeList");
+    if (grid) {
+      grid.addEventListener("touchstart", () => {
+      }, { passive: true });
+    }
     const actionsMenu = document.getElementById("actionsMenu");
     const backdrop = document.querySelector(".menu-backdrop");
     if (actionsMenu) {

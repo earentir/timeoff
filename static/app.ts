@@ -1494,6 +1494,14 @@ function setupTouchEvents() {
     });
   }, { passive: true });
 
+  // Ensure horizontal pan inside grid stays within the grid scrolling
+  const grid = document.getElementById('employeeList');
+  if (grid) {
+    grid.addEventListener('touchstart', () => { /* noop */ }, { passive: true });
+    // Using CSS touch-action: pan-x on #employeeList handles horizontal panning;
+    // we keep JS here minimal to avoid interfering with native scroll.
+  }
+
   // Enhance swipe for action menu for touch devices
   const actionsMenu = document.getElementById('actionsMenu') as HTMLDivElement;
   const backdrop = document.querySelector('.menu-backdrop') as HTMLDivElement;

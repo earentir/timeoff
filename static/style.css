@@ -109,6 +109,10 @@ body.dark #employeeFilter {
   box-sizing: border-box;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none; /* prevent desktop selection extending to page */
 }
 
 /* Row styling */
@@ -186,6 +190,14 @@ body.dark .capacity-row .capacity-percent { color: #ddd; }
   box-sizing: border-box;
   position: relative;
   transition: all 0.2s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.row, .employee-name, .header-cell {
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 /* Header cells */
@@ -208,7 +220,12 @@ body.dark .capacity-row .capacity-percent { color: #ddd; }
 }
 
 /* Hover effect for rows */
+/* Hover highlight only within the grid area, not full width */
 .row:hover {
+  background-color: transparent;
+}
+.row:hover .day-cell,
+.row:hover .employee-name {
   background-color: #ffe4b5;
   color: #000;
 }
