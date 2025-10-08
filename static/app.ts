@@ -8,6 +8,9 @@ interface Employee {
   team?: string;
   department?: string;
   pair?: string;
+  annualAllowance?: number; // optional: total allowed days per year
+  carryoverAvailable?: number; // optional: unused from previous year available to use this year
+  allowances?: { [year: string]: number }; // per-year allowance
 }
 
 interface DayOffTypeConfig {
@@ -20,6 +23,7 @@ interface DayOffEntry {
   date: string; // ISO date e.g. "2025-04-15"
   type: string;
   note?: string;
+  useCarryover?: boolean;
 }
 
 interface DaysOffData {
@@ -166,28 +170,15 @@ function saveModal() {
 
   const selectedType = dayOffTypeSelect.value;
   const note = dayOffNoteInput.value.trim();
+  // Disallow user from setting reserved types via UI
+  const disallowedTypes = new Set(["Holiday", "Sunday", "Saturday", "Friday"]);
+  if (disallowedTypes.has(selectedType)) {
+    showNotification("This type is managed by JSON and cannot be set manually.", "error");
+    closeModal();
+    return;
+  }
 
-  if (selectedType === "Holiday") {
-    let existingHoliday = holidaysData.holidays.find((h) => h.date === isoDate);
-    if (!existingHoliday) {
-      existingHoliday = {
-        date: isoDate,
-        name: note || "Holiday"
-      };
-      holidaysData.holidays.push(existingHoliday);
-    } else {
-      existingHoliday.name = note || "Holiday";
-    }
-    cell.style.backgroundColor = employeesData.dayOffTypes["Holiday"].background;
-    cell.style.color = employeesData.dayOffTypes["Holiday"].foreground;
-    cell.classList.add("holiday");
-    cell.classList.remove("day-off");
-    cell.removeAttribute("draggable");
-
-    // Set tooltip for holiday
-    cell.title = note || "Holiday";
-    cell.setAttribute('data-tooltip', note || "Holiday"); // Add this line
-  } else {
+  {
     if (!daysOffData[username]) {
       daysOffData[username] = [];
     }
@@ -208,30 +199,38 @@ function saveModal() {
         cell.removeAttribute('data-tooltip'); // Add this line
       }
     } else {
-      const dayOffEntry: DayOffEntry = { date: isoDate, type: selectedType};
+      const isCarryoverSelection = selectedType === "Normal__carryover";
+      const baseType = isCarryoverSelection ? "Normal" : selectedType;
+      const dayOffEntry: DayOffEntry = { date: isoDate, type: baseType };
       if (note !== "") {
         dayOffEntry.note = note;
+      }
+      if (isCarryoverSelection) {
+        dayOffEntry.useCarryover = true;
+      } else {
+        delete dayOffEntry.useCarryover;
       }
       if (existingIndex === -1) {
         userDaysOff.push(dayOffEntry);
       } else {
         userDaysOff[existingIndex] = dayOffEntry;
       }
-      const typeConfig = employeesData.dayOffTypes[selectedType] || employeesData.dayOffTypes["Normal"];
+      const typeConfig = employeesData.dayOffTypes[baseType] || employeesData.dayOffTypes["Normal"];
       cell.style.backgroundColor = typeConfig.background;
       cell.style.color = typeConfig.foreground;
       cell.classList.add("day-off");
       cell.classList.remove("holiday");
-      cell.dataset.type = selectedType;
+      cell.dataset.type = baseType;
       cell.setAttribute("draggable", "true");
 
       // Set tooltip for day off with type and note information
+      const carry = dayOffEntry.useCarryover ? " (carryover)" : "";
       if (note) {
-        cell.title = `${selectedType}: ${note}`;
-        cell.setAttribute('data-tooltip', `${selectedType}: ${note}`); // Add this line
+        cell.title = `${selectedType}: ${note}${carry}`;
+        cell.setAttribute('data-tooltip', `${selectedType}: ${note}${carry}`);
       } else {
-        cell.title = selectedType;
-        cell.setAttribute('data-tooltip', selectedType); // Add this line
+        cell.title = `${selectedType}${carry}`;
+        cell.setAttribute('data-tooltip', `${selectedType}${carry}`);
       }
 
       setupDragEvents(cell, username, dayOffEntry);
@@ -376,6 +375,29 @@ async function saveData(username) {
   } catch (error) {
     console.error("Error saving data:", error);
     showNotification("Failed to save changes. Please try again.", "error");
+  }
+}
+
+/**
+ * Save employees data (used when updating per-year allowances)
+ */
+async function saveEmployeesData() {
+  try {
+    console.log("Saving employees data (allowances)...");
+    const response = await fetch("/api/employees.json", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(employeesData)
+    });
+    if (!response.ok) {
+      throw new Error("Failed to save employees.json");
+    }
+    showNotification("Allowances saved", "success");
+  } catch (error) {
+    console.error("Error saving employees.json", error);
+    showNotification("Failed to save allowances", "error");
   }
 }
 
@@ -793,6 +815,133 @@ function exportCalendarData() {
   }
 }
 
+// Export in selected format: json | xml | csv
+function exportCalendarDataAs(format: "json" | "xml" | "csv") {
+  try {
+    const exportObj = {
+      month: currentMonth,
+      year: currentYear,
+      employeesData,
+      daysOffData,
+      holidaysData,
+      exportDate: new Date().toISOString()
+    };
+
+    let dataStr = "";
+    let mime = "application/octet-stream";
+    let filename = `calendar-export-${currentYear}-${currentMonth + 1}.${format}`;
+
+    if (format === "json") {
+      dataStr = JSON.stringify(exportObj, null, 2);
+      mime = "application/json";
+    } else if (format === "xml") {
+      dataStr = convertExportToXML(exportObj);
+      mime = "application/xml";
+    } else if (format === "csv") {
+      dataStr = convertExportToCSV(exportObj);
+      mime = "text/csv";
+    }
+
+    const dataUri = `data:${mime};charset=utf-8,` + encodeURIComponent(dataStr);
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', filename);
+    linkElement.click();
+    showNotification(`Exported ${format.toUpperCase()} successfully`, "success");
+  } catch (error) {
+    console.error("Error exporting data:", error);
+    showNotification("Failed to export data", "error");
+  }
+}
+
+function convertExportToXML(obj: any): string {
+  // Minimal XML conversion tailored to known structure
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+  const employeeXml = obj.employeesData.employees.map((e: any) => {
+    const attrs = ["username","name","surname","visible","team","department","pair"].map(k => e[k] !== undefined ? `<${k}>${esc(String(e[k]))}</${k}>` : "").join("");
+    return `<employee>${attrs}</employee>`;
+  }).join("");
+  const dayOffUsers = Object.keys(obj.daysOffData || {});
+  const daysOffXml = dayOffUsers.map(u => {
+    const entries = (obj.daysOffData[u] || []).map((d: any) => {
+      const note = d.note ? `<note>${esc(String(d.note))}</note>` : "";
+      const carry = d.useCarryover ? `<useCarryover>true</useCarryover>` : "";
+      return `<entry><date>${esc(d.date)}</date><type>${esc(d.type)}</type>${note}${carry}</entry>`;
+    }).join("");
+    return `<user username="${esc(u)}">${entries}</user>`;
+  }).join("");
+  const holidaysXml = (obj.holidaysData.holidays || []).map((h: any) => `<holiday><date>${esc(h.date)}</date><name>${esc(h.name)}</name></holiday>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<calendarExport>\n  <month>${obj.month}</month>\n  <year>${obj.year}</year>\n  <exportDate>${esc(obj.exportDate)}</exportDate>\n  <employees>${employeeXml}</employees>\n  <daysOff>${daysOffXml}</daysOff>\n  <holidays>${holidaysXml}</holidays>\n</calendarExport>`;
+}
+
+function convertExportToCSV(obj: any): string {
+  // Create three CSV sections separated by blank lines
+  const csvEsc = (v: any) => {
+    const s = String(v ?? "");
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+  // Employees
+  const empHeaders = ["username","name","surname","visible","team","department","pair"];
+  const empRows = obj.employeesData.employees.map((e: any) => empHeaders.map(h => csvEsc(e[h])).join(","));
+  const employeesCsv = [empHeaders.join(","), ...empRows].join("\n");
+  // DaysOff
+  const dayOffHeaders = ["username","date","type","note","useCarryover"];
+  const dayOffRows: string[] = [];
+  Object.keys(obj.daysOffData || {}).forEach(u => {
+    (obj.daysOffData[u] || []).forEach((d: any) => {
+      dayOffRows.push([csvEsc(u), csvEsc(d.date), csvEsc(d.type), csvEsc(d.note ?? ""), csvEsc(d.useCarryover ? "true" : "false")].join(","));
+    });
+  });
+  const daysOffCsv = [dayOffHeaders.join(","), ...dayOffRows].join("\n");
+  // Holidays
+  const holHeaders = ["date","name"];
+  const holRows = (obj.holidaysData.holidays || []).map((h: any) => [csvEsc(h.date), csvEsc(h.name)].join(","));
+  const holidaysCsv = [holHeaders.join(","), ...holRows].join("\n");
+  return `# Employees\n${employeesCsv}\n\n# DaysOff\n${daysOffCsv}\n\n# Holidays\n${holidaysCsv}\n`;
+}
+
+function showExportDialog() {
+  let dlg = document.getElementById("exportDialog") as HTMLDivElement | null;
+  if (!dlg) {
+    dlg = document.createElement("div");
+    dlg.id = "exportDialog";
+    dlg.className = "modal";
+    dlg.innerHTML = `
+      <div class="modal-content">
+        <h3>Export Data</h3>
+        <div class="form-group">
+          <label>Select format:</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button id="btnExportJson">JSON</button>
+            <button id="btnExportXml">XML</button>
+            <button id="btnExportCsv">CSV</button>
+          </div>
+        </div>
+        <div class="modal-buttons">
+          <button id="exportCancel">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(dlg);
+
+    dlg.addEventListener("click", (e) => {
+      if (e.target === dlg) dlg!.style.display = "none";
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && dlg && dlg.style.display === "flex") dlg.style.display = "none";
+    });
+  }
+  const btnJson = document.getElementById("btnExportJson");
+  const btnXml = document.getElementById("btnExportXml");
+  const btnCsv = document.getElementById("btnExportCsv");
+  const btnCancel = document.getElementById("exportCancel");
+  if (btnJson) btnJson.onclick = () => { exportCalendarDataAs("json"); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
+  if (btnXml) btnXml.onclick = () => { exportCalendarDataAs("xml"); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
+  if (btnCsv) btnCsv.onclick = () => { exportCalendarDataAs("csv"); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
+  if (btnCancel) btnCancel.onclick = () => { (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
+  dlg!.style.display = "flex";
+}
+
 /**
  * Set up event listeners for buttons and controls
  */
@@ -1134,8 +1283,8 @@ function setupActionHandlers() {
 
   if (actionExportData) {
     actionExportData.addEventListener('click', () => {
-      exportCalendarData();
-
+      // Open export dialog instead of immediate JSON export
+      showExportDialog();
       // Hide menu
       actionsMenu.classList.remove('visible');
       backdrop.classList.remove('visible');
@@ -1352,6 +1501,22 @@ function initControls() {
   teamFilter.addEventListener("change", handleTeamFilterChange);
 
   console.log("Event listeners attached to dropdowns");
+
+  // Move the action FAB into the controls bar, left of the month selector
+  const actionFabEl = document.getElementById('actionFab') as HTMLDivElement | null;
+  const controls = document.getElementById('controls') as HTMLDivElement | null;
+  if (actionFabEl && controls && monthSelect) {
+    actionFabEl.classList.add('inline-action-fab');
+    // Clear any inline/fallback positioning that might keep it fixed
+    actionFabEl.style.position = 'static';
+    actionFabEl.style.bottom = '';
+    actionFabEl.style.right = '';
+    actionFabEl.style.left = '';
+    actionFabEl.style.top = '';
+    (actionFabEl as any).style.inset = '';
+    // Insert before monthSelect
+    controls.insertBefore(actionFabEl, monthSelect);
+  }
 }
 
 /**
@@ -1801,8 +1966,39 @@ function showUserStatistics(username, event) {
   statsHtml += "</div>";
   statsHtml += "</div>";
 
+  // Allowance button and balances (no inline inputs)
+  const prevYear = currentYear - 1;
+  const employeeAllowances = employee.allowances || {};
+  const allowancePrev = employeeAllowances[String(prevYear)];
+  const allowanceCurrMaybe = employeeAllowances[String(currentYear)];
+
+  const usedPrevYearTotal = calculateUsedDays(username, prevYear).total;
+  const usedCurr = calculateUsedDays(username, currentYear);
+  const effPrevAllowance = Number(allowancePrev) || 0;
+  const effCurrAllowance = (allowanceCurrMaybe !== undefined)
+    ? (Number(allowanceCurrMaybe) || 0)
+    : (Number(allowancePrev) || 0);
+  const prevUnused = Math.max(0, effPrevAllowance - usedPrevYearTotal);
+  const availableNow = Math.max(0, effCurrAllowance + prevUnused - (usedCurr.carryover + usedCurr.base));
+
+  statsHtml += `<h4>Allowance & Balance</h4>`;
+  statsHtml += '<div class="stats-table">';
+  statsHtml += `<div class="form-group">
+    <button id="openAllowanceDialogBtn">Set Allowance for ${currentYear}</button>
+    <div class="form-help">Prev ${prevYear}: ${effPrevAllowance} (used ${usedPrevYearTotal}, carry ${prevUnused})</div>
+    <div class="form-help">Curr ${currentYear}: ${allowanceCurrMaybe ?? '(fallback to prev)'} | Used carry ${usedCurr.carryover}, used current ${usedCurr.base}, available ${availableNow}</div>
+  </div>`;
+  statsHtml += "</div>";
+
   userStatsContent.innerHTML = statsHtml;
   userStatsModal.style.display = "flex";
+
+  const openAllowanceDialogBtn = document.getElementById("openAllowanceDialogBtn");
+  if (openAllowanceDialogBtn) {
+    openAllowanceDialogBtn.addEventListener("click", () => {
+      showAllowanceDialog(username, currentYear);
+    });
+  }
 }
 
 function calculatePairConflicts(
@@ -1855,6 +2051,23 @@ function calculateYearlyStats(username: string, year: number): { [type: string]:
   });
 
   return stats;
+}
+
+/**
+ * Calculate used days per year broken down by carryover vs current-year allowance
+ */
+function calculateUsedDays(username: string, year: number): { total: number; carryover: number; base: number } {
+  const userDaysOff = daysOffData[username] || [];
+  let total = 0;
+  let carryover = 0;
+  let base = 0;
+  userDaysOff.forEach((entry) => {
+    const d = parseLocalDate(entry.date);
+    if (d.getFullYear() !== year) return;
+    total += 1;
+    if ((entry as any).useCarryover) carryover += 1; else base += 1;
+  });
+  return { total, carryover, base };
 }
 
 /**
@@ -1914,10 +2127,11 @@ function setupDragEvents(cell, username, dayOffEntry) {
   });
 
   // Set correct tooltip content
+  const carry = dayOffEntry.useCarryover ? " (carryover)" : "";
   if (dayOffEntry.note) {
-    cell.title = `${dayOffEntry.type}: ${dayOffEntry.note}`;
+    cell.title = `${dayOffEntry.type}: ${dayOffEntry.note}${carry}`;
   } else {
-    cell.title = dayOffEntry.type;
+    cell.title = `${dayOffEntry.type}${carry}`;
   }
 
   // Add custom tooltip functionality
@@ -1978,6 +2192,9 @@ function setupDropTarget(cell, username, isoDate) {
       if (draggedDayOffEntry.note) {
         newEntry.note = draggedDayOffEntry.note;
       }
+      if (draggedDayOffEntry.useCarryover) {
+        newEntry.useCarryover = true;
+      }
       userDaysOff.push(newEntry);
 
       // Update the drop target cell
@@ -1986,12 +2203,13 @@ function setupDropTarget(cell, username, isoDate) {
       cell.style.color = typeConfig.foreground;
 
       // Set tooltip after drag and drop
+      const carry = newEntry.useCarryover ? " (carryover)" : "";
       if (newEntry.note) {
-        cell.title = `${newEntry.type}: ${newEntry.note}`;
-        cell.setAttribute('data-tooltip', `${newEntry.type}: ${newEntry.note}`); // Add this line
+        cell.title = `${newEntry.type}: ${newEntry.note}${carry}`;
+        cell.setAttribute('data-tooltip', `${newEntry.type}: ${newEntry.note}${carry}`);
       } else {
-        cell.title = newEntry.type;
-        cell.setAttribute('data-tooltip', newEntry.type); // Add this line
+        cell.title = `${newEntry.type}${carry}`;
+        cell.setAttribute('data-tooltip', `${newEntry.type}${carry}`);
       }
 
       cell.classList.add("day-off");
@@ -2202,11 +2420,21 @@ function openModal(username, isoDate, cell) {
     editableArea.style.display = "block";
     saveButton.style.display = "inline-block";
     dayOffTypeSelect.innerHTML = "";
+    const disallowedTypes = new Set(["Holiday", "Sunday", "Saturday", "Friday"]);
     Object.keys(employeesData.dayOffTypes).forEach((type) => {
+      if (disallowedTypes.has(type)) return;
       const option = document.createElement("option");
       option.value = type;
       option.text = type;
       dayOffTypeSelect.appendChild(option);
+      // After adding Normal, add a carryover variant
+      if (type === "Normal") {
+        const carryOption = document.createElement("option");
+        carryOption.value = "Normal__carryover";
+        const prevYear = date.getFullYear() - 1;
+        carryOption.text = `Normal (${prevYear})`;
+        dayOffTypeSelect.appendChild(carryOption);
+      }
     });
     const userDaysOff = daysOffData[username] || [];
     const existingEntry = userDaysOff.find((entry) => entry.date === isoDate);
@@ -2218,7 +2446,11 @@ function openModal(username, isoDate, cell) {
         saveButton.style.display = "none";
         removeButton.style.display = "none";
       } else {
-        dayOffTypeSelect.value = existingEntry.type;
+        if (existingEntry.type === "Normal" && existingEntry.useCarryover) {
+          dayOffTypeSelect.value = "Normal__carryover";
+        } else {
+          dayOffTypeSelect.value = existingEntry.type;
+        }
         dayOffNoteInput.value = existingEntry.note || "";
         removeButton.style.display = "inline-block";
       }
@@ -2302,4 +2534,78 @@ function initTooltipSystem() {
   document.querySelectorAll('.day-off[draggable="true"]').forEach(cell => {
     attachTooltipToDayOffCell(cell);
   });
+}
+
+function showAllowanceDialog(username: string, year: number) {
+  let dlg = document.getElementById("allowanceDialog") as HTMLDivElement | null;
+  if (!dlg) {
+    dlg = document.createElement("div");
+    dlg.id = "allowanceDialog";
+    dlg.className = "modal";
+    dlg.innerHTML = `
+      <div class="modal-content">
+        <h3>Set Allowance for <span id="allowanceYear"></span></h3>
+        <div class="form-group">
+          <label for="allowanceInput">Allowance (days):</label>
+          <input type="number" id="allowanceInput" min="0" step="1" />
+        </div>
+        <div class="modal-buttons">
+          <button id="allowanceCancel">Cancel</button>
+          <button id="allowanceClear">Clear</button>
+          <button id="allowanceSet">Set</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(dlg);
+
+    // Close when clicking outside
+    dlg.addEventListener("click", (e) => {
+      if (e.target === dlg) {
+        dlg!.style.display = "none";
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && dlg && dlg.style.display === "flex") {
+        dlg.style.display = "none";
+      }
+    });
+  }
+
+  const yearSpan = document.getElementById("allowanceYear") as HTMLSpanElement | null;
+  const input = document.getElementById("allowanceInput") as HTMLInputElement | null;
+  const btnCancel = document.getElementById("allowanceCancel");
+  const btnClear = document.getElementById("allowanceClear");
+  const btnSet = document.getElementById("allowanceSet");
+
+  if (yearSpan) yearSpan.textContent = String(year);
+
+  const emp = employeesData.employees.find(e => e.username === username);
+  const existingVal = emp?.allowances?.[String(year)] ?? "";
+  if (input) input.value = existingVal === "" ? "" : String(existingVal);
+
+  if (btnCancel) btnCancel.onclick = () => { if (dlg) dlg.style.display = "none"; };
+  if (btnClear) btnClear.onclick = async () => {
+    const e = employeesData.employees.find(x => x.username === username);
+    if (!e) return;
+    if (!e.allowances) e.allowances = {};
+    delete e.allowances[String(year)];
+    await saveEmployeesData();
+    if (dlg) dlg.style.display = "none";
+    // Refresh stats modal to reflect changes
+    showUserStatistics(username, new MouseEvent('contextmenu'));
+  };
+  if (btnSet) btnSet.onclick = async () => {
+    const raw = input ? input.value.trim() : "";
+    const val = Math.max(0, Math.floor(Number(raw) || 0));
+    const e = employeesData.employees.find(x => x.username === username);
+    if (!e) return;
+    if (!e.allowances) e.allowances = {};
+    e.allowances[String(year)] = val;
+    await saveEmployeesData();
+    if (dlg) dlg.style.display = "none";
+    showUserStatistics(username, new MouseEvent('contextmenu'));
+  };
+
+  if (dlg) dlg.style.display = "flex";
 }

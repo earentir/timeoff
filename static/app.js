@@ -86,25 +86,13 @@
     }
     const selectedType = dayOffTypeSelect.value;
     const note = dayOffNoteInput.value.trim();
-    if (selectedType === "Holiday") {
-      let existingHoliday = holidaysData.holidays.find((h) => h.date === isoDate);
-      if (!existingHoliday) {
-        existingHoliday = {
-          date: isoDate,
-          name: note || "Holiday"
-        };
-        holidaysData.holidays.push(existingHoliday);
-      } else {
-        existingHoliday.name = note || "Holiday";
-      }
-      cell.style.backgroundColor = employeesData.dayOffTypes["Holiday"].background;
-      cell.style.color = employeesData.dayOffTypes["Holiday"].foreground;
-      cell.classList.add("holiday");
-      cell.classList.remove("day-off");
-      cell.removeAttribute("draggable");
-      cell.title = note || "Holiday";
-      cell.setAttribute("data-tooltip", note || "Holiday");
-    } else {
+    const disallowedTypes = /* @__PURE__ */ new Set(["Holiday", "Sunday", "Saturday", "Friday"]);
+    if (disallowedTypes.has(selectedType)) {
+      showNotification("This type is managed by JSON and cannot be set manually.", "error");
+      closeModal();
+      return;
+    }
+    {
       if (!daysOffData[username]) {
         daysOffData[username] = [];
       }
@@ -122,28 +110,36 @@
           cell.removeAttribute("data-tooltip");
         }
       } else {
-        const dayOffEntry = { date: isoDate, type: selectedType };
+        const isCarryoverSelection = selectedType === "Normal__carryover";
+        const baseType = isCarryoverSelection ? "Normal" : selectedType;
+        const dayOffEntry = { date: isoDate, type: baseType };
         if (note !== "") {
           dayOffEntry.note = note;
+        }
+        if (isCarryoverSelection) {
+          dayOffEntry.useCarryover = true;
+        } else {
+          delete dayOffEntry.useCarryover;
         }
         if (existingIndex === -1) {
           userDaysOff.push(dayOffEntry);
         } else {
           userDaysOff[existingIndex] = dayOffEntry;
         }
-        const typeConfig = employeesData.dayOffTypes[selectedType] || employeesData.dayOffTypes["Normal"];
+        const typeConfig = employeesData.dayOffTypes[baseType] || employeesData.dayOffTypes["Normal"];
         cell.style.backgroundColor = typeConfig.background;
         cell.style.color = typeConfig.foreground;
         cell.classList.add("day-off");
         cell.classList.remove("holiday");
-        cell.dataset.type = selectedType;
+        cell.dataset.type = baseType;
         cell.setAttribute("draggable", "true");
+        const carry = dayOffEntry.useCarryover ? " (carryover)" : "";
         if (note) {
-          cell.title = `${selectedType}: ${note}`;
-          cell.setAttribute("data-tooltip", `${selectedType}: ${note}`);
+          cell.title = `${selectedType}: ${note}${carry}`;
+          cell.setAttribute("data-tooltip", `${selectedType}: ${note}${carry}`);
         } else {
-          cell.title = selectedType;
-          cell.setAttribute("data-tooltip", selectedType);
+          cell.title = `${selectedType}${carry}`;
+          cell.setAttribute("data-tooltip", `${selectedType}${carry}`);
         }
         setupDragEvents(cell, username, dayOffEntry);
       }
@@ -250,6 +246,27 @@
       } catch (error) {
         console.error("Error saving data:", error);
         showNotification("Failed to save changes. Please try again.", "error");
+      }
+    });
+  }
+  function saveEmployeesData() {
+    return __async(this, null, function* () {
+      try {
+        console.log("Saving employees data (allowances)...");
+        const response = yield fetch("/api/employees.json", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(employeesData)
+        });
+        if (!response.ok) {
+          throw new Error("Failed to save employees.json");
+        }
+        showNotification("Allowances saved", "success");
+      } catch (error) {
+        console.error("Error saving employees.json", error);
+        showNotification("Failed to save allowances", "error");
       }
     });
   }
@@ -421,9 +438,9 @@
       notification.style.display = "none";
     }, 3e3);
   }
-  function exportCalendarData() {
+  function exportCalendarDataAs(format) {
     try {
-      const exportData = {
+      const exportObj = {
         month: currentMonth,
         year: currentYear,
         employeesData,
@@ -431,18 +448,136 @@
         holidaysData,
         exportDate: (/* @__PURE__ */ new Date()).toISOString()
       };
-      const dataStr = JSON.stringify(exportData, null, 2);
-      const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
-      const exportFileDefaultName = `calendar-export-${currentYear}-${currentMonth + 1}.json`;
+      let dataStr = "";
+      let mime = "application/octet-stream";
+      let filename = `calendar-export-${currentYear}-${currentMonth + 1}.${format}`;
+      if (format === "json") {
+        dataStr = JSON.stringify(exportObj, null, 2);
+        mime = "application/json";
+      } else if (format === "xml") {
+        dataStr = convertExportToXML(exportObj);
+        mime = "application/xml";
+      } else if (format === "csv") {
+        dataStr = convertExportToCSV(exportObj);
+        mime = "text/csv";
+      }
+      const dataUri = `data:${mime};charset=utf-8,` + encodeURIComponent(dataStr);
       const linkElement = document.createElement("a");
       linkElement.setAttribute("href", dataUri);
-      linkElement.setAttribute("download", exportFileDefaultName);
+      linkElement.setAttribute("download", filename);
       linkElement.click();
-      showNotification("Calendar data exported successfully", "success");
+      showNotification(`Exported ${format.toUpperCase()} successfully`, "success");
     } catch (error) {
       console.error("Error exporting data:", error);
       showNotification("Failed to export data", "error");
     }
+  }
+  function convertExportToXML(obj) {
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+    const employeeXml = obj.employeesData.employees.map((e) => {
+      const attrs = ["username", "name", "surname", "visible", "team", "department", "pair"].map((k) => e[k] !== void 0 ? `<${k}>${esc(String(e[k]))}</${k}>` : "").join("");
+      return `<employee>${attrs}</employee>`;
+    }).join("");
+    const dayOffUsers = Object.keys(obj.daysOffData || {});
+    const daysOffXml = dayOffUsers.map((u) => {
+      const entries = (obj.daysOffData[u] || []).map((d) => {
+        const note = d.note ? `<note>${esc(String(d.note))}</note>` : "";
+        const carry = d.useCarryover ? `<useCarryover>true</useCarryover>` : "";
+        return `<entry><date>${esc(d.date)}</date><type>${esc(d.type)}</type>${note}${carry}</entry>`;
+      }).join("");
+      return `<user username="${esc(u)}">${entries}</user>`;
+    }).join("");
+    const holidaysXml = (obj.holidaysData.holidays || []).map((h) => `<holiday><date>${esc(h.date)}</date><name>${esc(h.name)}</name></holiday>`).join("");
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<calendarExport>
+  <month>${obj.month}</month>
+  <year>${obj.year}</year>
+  <exportDate>${esc(obj.exportDate)}</exportDate>
+  <employees>${employeeXml}</employees>
+  <daysOff>${daysOffXml}</daysOff>
+  <holidays>${holidaysXml}</holidays>
+</calendarExport>`;
+  }
+  function convertExportToCSV(obj) {
+    const csvEsc = (v) => {
+      const s = String(v != null ? v : "");
+      if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const empHeaders = ["username", "name", "surname", "visible", "team", "department", "pair"];
+    const empRows = obj.employeesData.employees.map((e) => empHeaders.map((h) => csvEsc(e[h])).join(","));
+    const employeesCsv = [empHeaders.join(","), ...empRows].join("\n");
+    const dayOffHeaders = ["username", "date", "type", "note", "useCarryover"];
+    const dayOffRows = [];
+    Object.keys(obj.daysOffData || {}).forEach((u) => {
+      (obj.daysOffData[u] || []).forEach((d) => {
+        var _a;
+        dayOffRows.push([csvEsc(u), csvEsc(d.date), csvEsc(d.type), csvEsc((_a = d.note) != null ? _a : ""), csvEsc(d.useCarryover ? "true" : "false")].join(","));
+      });
+    });
+    const daysOffCsv = [dayOffHeaders.join(","), ...dayOffRows].join("\n");
+    const holHeaders = ["date", "name"];
+    const holRows = (obj.holidaysData.holidays || []).map((h) => [csvEsc(h.date), csvEsc(h.name)].join(","));
+    const holidaysCsv = [holHeaders.join(","), ...holRows].join("\n");
+    return `# Employees
+${employeesCsv}
+
+# DaysOff
+${daysOffCsv}
+
+# Holidays
+${holidaysCsv}
+`;
+  }
+  function showExportDialog() {
+    let dlg = document.getElementById("exportDialog");
+    if (!dlg) {
+      dlg = document.createElement("div");
+      dlg.id = "exportDialog";
+      dlg.className = "modal";
+      dlg.innerHTML = `
+      <div class="modal-content">
+        <h3>Export Data</h3>
+        <div class="form-group">
+          <label>Select format:</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button id="btnExportJson">JSON</button>
+            <button id="btnExportXml">XML</button>
+            <button id="btnExportCsv">CSV</button>
+          </div>
+        </div>
+        <div class="modal-buttons">
+          <button id="exportCancel">Cancel</button>
+        </div>
+      </div>`;
+      document.body.appendChild(dlg);
+      dlg.addEventListener("click", (e) => {
+        if (e.target === dlg) dlg.style.display = "none";
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && dlg && dlg.style.display === "flex") dlg.style.display = "none";
+      });
+    }
+    const btnJson = document.getElementById("btnExportJson");
+    const btnXml = document.getElementById("btnExportXml");
+    const btnCsv = document.getElementById("btnExportCsv");
+    const btnCancel = document.getElementById("exportCancel");
+    if (btnJson) btnJson.onclick = () => {
+      exportCalendarDataAs("json");
+      document.getElementById("exportDialog").style.display = "none";
+    };
+    if (btnXml) btnXml.onclick = () => {
+      exportCalendarDataAs("xml");
+      document.getElementById("exportDialog").style.display = "none";
+    };
+    if (btnCsv) btnCsv.onclick = () => {
+      exportCalendarDataAs("csv");
+      document.getElementById("exportDialog").style.display = "none";
+    };
+    if (btnCancel) btnCancel.onclick = () => {
+      document.getElementById("exportDialog").style.display = "none";
+    };
+    dlg.style.display = "flex";
   }
   function setupEventListeners() {
     cancelButton.addEventListener("click", closeModal);
@@ -678,7 +813,7 @@
     }
     if (actionExportData2) {
       actionExportData2.addEventListener("click", () => {
-        exportCalendarData();
+        showExportDialog();
         actionsMenu.classList.remove("visible");
         backdrop.classList.remove("visible");
       });
@@ -810,6 +945,18 @@
     employeeFilter.addEventListener("input", handleFilterChange);
     teamFilter.addEventListener("change", handleTeamFilterChange);
     console.log("Event listeners attached to dropdowns");
+    const actionFabEl = document.getElementById("actionFab");
+    const controls = document.getElementById("controls");
+    if (actionFabEl && controls && monthSelect) {
+      actionFabEl.classList.add("inline-action-fab");
+      actionFabEl.style.position = "static";
+      actionFabEl.style.bottom = "";
+      actionFabEl.style.right = "";
+      actionFabEl.style.left = "";
+      actionFabEl.style.top = "";
+      actionFabEl.style.inset = "";
+      controls.insertBefore(actionFabEl, monthSelect);
+    }
   }
   function initTeamFilter() {
     teamFilter.innerHTML = '<option value="">All Teams/Depts</option>';
@@ -1148,8 +1295,32 @@
     });
     statsHtml += "</div>";
     statsHtml += "</div>";
+    const prevYear = currentYear - 1;
+    const employeeAllowances = employee.allowances || {};
+    const allowancePrev = employeeAllowances[String(prevYear)];
+    const allowanceCurrMaybe = employeeAllowances[String(currentYear)];
+    const usedPrevYearTotal = calculateUsedDays(username, prevYear).total;
+    const usedCurr = calculateUsedDays(username, currentYear);
+    const effPrevAllowance = Number(allowancePrev) || 0;
+    const effCurrAllowance = allowanceCurrMaybe !== void 0 ? Number(allowanceCurrMaybe) || 0 : Number(allowancePrev) || 0;
+    const prevUnused = Math.max(0, effPrevAllowance - usedPrevYearTotal);
+    const availableNow = Math.max(0, effCurrAllowance + prevUnused - (usedCurr.carryover + usedCurr.base));
+    statsHtml += `<h4>Allowance & Balance</h4>`;
+    statsHtml += '<div class="stats-table">';
+    statsHtml += `<div class="form-group">
+    <button id="openAllowanceDialogBtn">Set Allowance for ${currentYear}</button>
+    <div class="form-help">Prev ${prevYear}: ${effPrevAllowance} (used ${usedPrevYearTotal}, carry ${prevUnused})</div>
+    <div class="form-help">Curr ${currentYear}: ${allowanceCurrMaybe != null ? allowanceCurrMaybe : "(fallback to prev)"} | Used carry ${usedCurr.carryover}, used current ${usedCurr.base}, available ${availableNow}</div>
+  </div>`;
+    statsHtml += "</div>";
     userStatsContent.innerHTML = statsHtml;
     userStatsModal.style.display = "flex";
+    const openAllowanceDialogBtn = document.getElementById("openAllowanceDialogBtn");
+    if (openAllowanceDialogBtn) {
+      openAllowanceDialogBtn.addEventListener("click", () => {
+        showAllowanceDialog(username, currentYear);
+      });
+    }
   }
   function closeUserStatsModal() {
     userStatsModal.style.display = "none";
@@ -1164,6 +1335,20 @@
       }
     });
     return stats;
+  }
+  function calculateUsedDays(username, year) {
+    const userDaysOff = daysOffData[username] || [];
+    let total = 0;
+    let carryover = 0;
+    let base = 0;
+    userDaysOff.forEach((entry) => {
+      const d = parseLocalDate(entry.date);
+      if (d.getFullYear() !== year) return;
+      total += 1;
+      if (entry.useCarryover) carryover += 1;
+      else base += 1;
+    });
+    return { total, carryover, base };
   }
   function calculateMonthlyStats(username, year) {
     const userDaysOff = daysOffData[username] || [];
@@ -1200,10 +1385,11 @@
       cell.classList.remove("dragging");
       console.log("Drag ended");
     });
+    const carry = dayOffEntry.useCarryover ? " (carryover)" : "";
     if (dayOffEntry.note) {
-      cell.title = `${dayOffEntry.type}: ${dayOffEntry.note}`;
+      cell.title = `${dayOffEntry.type}: ${dayOffEntry.note}${carry}`;
     } else {
-      cell.title = dayOffEntry.type;
+      cell.title = `${dayOffEntry.type}${carry}`;
     }
     attachTooltipToDayOffCell(cell);
   }
@@ -1241,16 +1427,20 @@
         if (draggedDayOffEntry.note) {
           newEntry.note = draggedDayOffEntry.note;
         }
+        if (draggedDayOffEntry.useCarryover) {
+          newEntry.useCarryover = true;
+        }
         userDaysOff.push(newEntry);
         const typeConfig = employeesData.dayOffTypes[newEntry.type] || employeesData.dayOffTypes["Normal"];
         cell.style.backgroundColor = typeConfig.background;
         cell.style.color = typeConfig.foreground;
+        const carry = newEntry.useCarryover ? " (carryover)" : "";
         if (newEntry.note) {
-          cell.title = `${newEntry.type}: ${newEntry.note}`;
-          cell.setAttribute("data-tooltip", `${newEntry.type}: ${newEntry.note}`);
+          cell.title = `${newEntry.type}: ${newEntry.note}${carry}`;
+          cell.setAttribute("data-tooltip", `${newEntry.type}: ${newEntry.note}${carry}`);
         } else {
-          cell.title = newEntry.type;
-          cell.setAttribute("data-tooltip", newEntry.type);
+          cell.title = `${newEntry.type}${carry}`;
+          cell.setAttribute("data-tooltip", `${newEntry.type}${carry}`);
         }
         cell.classList.add("day-off");
         cell.dataset.type = newEntry.type;
@@ -1343,11 +1533,20 @@
       editableArea.style.display = "block";
       saveButton.style.display = "inline-block";
       dayOffTypeSelect.innerHTML = "";
+      const disallowedTypes = /* @__PURE__ */ new Set(["Holiday", "Sunday", "Saturday", "Friday"]);
       Object.keys(employeesData.dayOffTypes).forEach((type) => {
+        if (disallowedTypes.has(type)) return;
         const option = document.createElement("option");
         option.value = type;
         option.text = type;
         dayOffTypeSelect.appendChild(option);
+        if (type === "Normal") {
+          const carryOption = document.createElement("option");
+          carryOption.value = "Normal__carryover";
+          const prevYear = date.getFullYear() - 1;
+          carryOption.text = `Normal (${prevYear})`;
+          dayOffTypeSelect.appendChild(carryOption);
+        }
       });
       const userDaysOff = daysOffData[username] || [];
       const existingEntry = userDaysOff.find((entry) => entry.date === isoDate);
@@ -1359,7 +1558,11 @@
           saveButton.style.display = "none";
           removeButton.style.display = "none";
         } else {
-          dayOffTypeSelect.value = existingEntry.type;
+          if (existingEntry.type === "Normal" && existingEntry.useCarryover) {
+            dayOffTypeSelect.value = "Normal__carryover";
+          } else {
+            dayOffTypeSelect.value = existingEntry.type;
+          }
           dayOffNoteInput.value = existingEntry.note || "";
           removeButton.style.display = "inline-block";
         }
@@ -1421,5 +1624,72 @@
     document.querySelectorAll('.day-off[draggable="true"]').forEach((cell) => {
       attachTooltipToDayOffCell(cell);
     });
+  }
+  function showAllowanceDialog(username, year) {
+    var _a, _b;
+    let dlg = document.getElementById("allowanceDialog");
+    if (!dlg) {
+      dlg = document.createElement("div");
+      dlg.id = "allowanceDialog";
+      dlg.className = "modal";
+      dlg.innerHTML = `
+      <div class="modal-content">
+        <h3>Set Allowance for <span id="allowanceYear"></span></h3>
+        <div class="form-group">
+          <label for="allowanceInput">Allowance (days):</label>
+          <input type="number" id="allowanceInput" min="0" step="1" />
+        </div>
+        <div class="modal-buttons">
+          <button id="allowanceCancel">Cancel</button>
+          <button id="allowanceClear">Clear</button>
+          <button id="allowanceSet">Set</button>
+        </div>
+      </div>
+    `;
+      document.body.appendChild(dlg);
+      dlg.addEventListener("click", (e) => {
+        if (e.target === dlg) {
+          dlg.style.display = "none";
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && dlg && dlg.style.display === "flex") {
+          dlg.style.display = "none";
+        }
+      });
+    }
+    const yearSpan = document.getElementById("allowanceYear");
+    const input = document.getElementById("allowanceInput");
+    const btnCancel = document.getElementById("allowanceCancel");
+    const btnClear = document.getElementById("allowanceClear");
+    const btnSet = document.getElementById("allowanceSet");
+    if (yearSpan) yearSpan.textContent = String(year);
+    const emp = employeesData.employees.find((e) => e.username === username);
+    const existingVal = (_b = (_a = emp == null ? void 0 : emp.allowances) == null ? void 0 : _a[String(year)]) != null ? _b : "";
+    if (input) input.value = existingVal === "" ? "" : String(existingVal);
+    if (btnCancel) btnCancel.onclick = () => {
+      if (dlg) dlg.style.display = "none";
+    };
+    if (btnClear) btnClear.onclick = () => __async(this, null, function* () {
+      const e = employeesData.employees.find((x) => x.username === username);
+      if (!e) return;
+      if (!e.allowances) e.allowances = {};
+      delete e.allowances[String(year)];
+      yield saveEmployeesData();
+      if (dlg) dlg.style.display = "none";
+      showUserStatistics(username, new MouseEvent("contextmenu"));
+    });
+    if (btnSet) btnSet.onclick = () => __async(this, null, function* () {
+      const raw = input ? input.value.trim() : "";
+      const val = Math.max(0, Math.floor(Number(raw) || 0));
+      const e = employeesData.employees.find((x) => x.username === username);
+      if (!e) return;
+      if (!e.allowances) e.allowances = {};
+      e.allowances[String(year)] = val;
+      yield saveEmployeesData();
+      if (dlg) dlg.style.display = "none";
+      showUserStatistics(username, new MouseEvent("contextmenu"));
+    });
+    if (dlg) dlg.style.display = "flex";
   }
 })();
