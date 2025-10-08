@@ -1531,6 +1531,14 @@ ${holidaysCsv}
     statsHtml += `<h4>Monthly Distribution</h4>`;
     statsHtml += '<div class="monthly-stats">';
     const monthlyStats = calculateMonthlyStats(username, currentYear);
+    const monthlyCarry = Array.from({ length: 12 }, () => 0);
+    const userDaysForYear = (daysOffData[username] || []).filter((e) => parseLocalDate(e.date).getFullYear() === currentYear);
+    userDaysForYear.forEach((e) => {
+      const d = parseLocalDate(e.date);
+      if (e.type === "Normal" && e.useCarryover) {
+        monthlyCarry[d.getMonth()] += 1;
+      }
+    });
     const monthNames = Array.from(
       { length: 12 },
       (_, i) => new Date(0, i).toLocaleString("default", { month: "short" })
@@ -1538,10 +1546,15 @@ ${holidaysCsv}
     statsHtml += '<div class="month-bars">';
     monthNames.forEach((month, index) => {
       const monthCount = Object.values(monthlyStats[index] || {}).reduce((sum, count) => sum + count, 0);
+      const carryCount = monthlyCarry[index] || 0;
       const heightPercent = Math.min(100, monthCount * 10);
+      const baseColor = "#5aa0ff";
+      const carryColor = "#ffb74d";
+      const carryPctOfBar = monthCount > 0 ? Math.round(carryCount / monthCount * 100) : 0;
+      const bg = carryPctOfBar > 0 ? `linear-gradient(to top, ${carryColor} 0% ${carryPctOfBar}%, ${baseColor} ${carryPctOfBar}% 100%)` : baseColor;
       statsHtml += `<div class="month-column">
     <div class="month-bar-container">
-      <div class="month-bar" style="height: ${heightPercent}%" title="${monthCount} days in ${month}"></div>
+      <div class="month-bar" style="height: ${heightPercent}%; background: ${bg}" title="${monthCount} days in ${month}${carryCount ? ` (carryover: ${carryCount})` : ""}"></div>
       <div class="month-count">${monthCount || ""}</div>
     </div>
     <div class="month-name">${month}</div>
@@ -1566,13 +1579,13 @@ ${holidaysCsv}
     <button id="openAllowanceDialogBtn">Set Allowance for ${currentYear}</button>
     <div class="form-help"></div>
     <div class="allowance-block">
-      <div class="allowance-year">${prevYear}: ${effPrevAllowance}</div>
+      <div class="allowance-year carry">${prevYear}: ${effPrevAllowance}</div>
       <div class="allowance-line">Used: ${usedPrev.total}</div>
       <div class="allowance-line">Used in ${currentYear} (Carry): ${usedCurr.carryover}</div>
       <div class="allowance-line">Remaining: ${prevUnused}</div>
     </div>
     <div class="allowance-block" style="margin-top:6px;">
-      <div class="allowance-year">${currentYear}: ${effCurrAllowance}</div>
+      <div class="allowance-year base">${currentYear}: ${effCurrAllowance}</div>
       <div class="allowance-line">Used: ${usedCurr.base}</div>
       <div class="allowance-line">Used in ${currentYear + 1} (Carry): ${usedCurr.nextYearCarryFromThisYear}</div>
       <div class="allowance-line">Remaining: ${currRemaining}</div>

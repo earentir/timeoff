@@ -1,5 +1,7 @@
 .allowance-block { margin-top: 4px; }
 .allowance-year { font-weight: bold; margin-bottom: 2px; }
+.allowance-year.base { color: #5aa0ff; }
+.allowance-year.carry { color: #ffb74d; }
 .allowance-line { margin-left: 8px; font-size: 12px; opacity: 0.9; }
 .ops-tabs .ops-tab {
   padding: 6px 10px;
