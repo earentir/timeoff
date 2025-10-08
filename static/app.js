@@ -1307,6 +1307,10 @@ ${holidaysCsv}
       const cell = document.createElement("div");
       cell.classList.add("day-cell", "header-cell");
       cell.textContent = day.toString();
+      const now = /* @__PURE__ */ new Date();
+      if (cellDate.getFullYear() === now.getFullYear() && cellDate.getMonth() === now.getMonth() && cellDate.getDate() === now.getDate()) {
+        cell.classList.add("today");
+      }
       if (cellDate.getDay() === 0 || cellDate.getDay() === 6) {
         cell.classList.add("weekend");
       }

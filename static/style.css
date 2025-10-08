@@ -207,6 +207,11 @@ body.dark .capacity-row .capacity-percent { color: #ddd; }
   font-weight: bold;
 }
 
+.header-cell.today {
+  background-color: #1e88e5;
+  color: #fff;
+}
+
 /* Employee name cell */
 .employee-name {
   width: 200px;
