@@ -354,33 +354,49 @@ async function saveData(username) {
     // Only send backup config if backups are enabled
     const maxBackupsHeader = backupConfig.enabled ? backupConfig.maxBackups.toString() : "0";
 
-    const daysOffResponse = await fetch("/api/daysOff.json", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Max-Backups": maxBackupsHeader
-      },
-      body: JSON.stringify(daysOffData)
-    });
+    // Get current ETags for optimistic concurrency
+    const [etagDaysRes, etagHolRes] = await Promise.all([
+      fetch('/api/daysOff.json'),
+      fetch('/api/holidays.json')
+    ]);
+    const etagDays = etagDaysRes.headers.get('ETag') || '';
+    const etagHol = etagHolRes.headers.get('ETag') || '';
 
-    const holidaysResponse = await fetch("/api/holidays.json", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Max-Backups": maxBackupsHeader
-      },
-      body: JSON.stringify(holidaysData)
-    });
+    const [daysOffResponse, holidaysResponse] = await Promise.all([
+      fetch("/api/daysOff.json", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Max-Backups": maxBackupsHeader,
+          "If-Match": etagDays
+        },
+        body: JSON.stringify(daysOffData)
+      }),
+      fetch("/api/holidays.json", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Max-Backups": maxBackupsHeader,
+          "If-Match": etagHol
+        },
+        body: JSON.stringify(holidaysData)
+      })
+    ]);
 
-    if (!daysOffResponse.ok || !holidaysResponse.ok) {
-      throw new Error("Failed to save data to server");
+    if (!daysOffResponse.ok) {
+      const txt = await daysOffResponse.text();
+      throw new Error(`daysOff save failed (${daysOffResponse.status}): ${txt}`);
+    }
+    if (!holidaysResponse.ok) {
+      const txt = await holidaysResponse.text();
+      throw new Error(`holidays save failed (${holidaysResponse.status}): ${txt}`);
     }
 
     console.log(`Data saved successfully for ${username}`);
     showNotification("Changes saved successfully", "success");
   } catch (error) {
     console.error("Error saving data:", error);
-    showNotification("Failed to save changes. Please try again.", "error");
+    showNotification(`Failed to save changes: ${error instanceof Error ? error.message : error}` as any, "error");
   }
 }
 
