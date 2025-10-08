@@ -302,106 +302,6 @@
       }
     });
   }
-  function saveBackupConfig() {
-    localStorage.setItem("backupConfig", JSON.stringify(backupConfig));
-    showNotification("Backup settings saved", "success");
-  }
-  function createSettingsModal() {
-    if (document.getElementById("settingsModal")) {
-      return;
-    }
-    const modal2 = document.createElement("div");
-    modal2.id = "settingsModal";
-    modal2.className = "modal";
-    modal2.innerHTML = `
-    <div class="modal-content">
-      <h3>App Settings</h3>
-      <div class="settings-section">
-        <h4>Backup Settings</h4>
-        <div class="form-group">
-          <label for="backupEnabled">Enable Backups:</label>
-          <input type="checkbox" id="backupEnabled" ${backupConfig.enabled ? "checked" : ""}>
-        </div>
-        <div class="form-group">
-          <label for="maxBackups">Max Backups to Keep:</label>
-          <input type="number" id="maxBackups" min="1" max="100" value="${backupConfig.maxBackups}">
-        </div>
-      </div>
-      <div class="modal-buttons">
-        <button id="settingsCancelButton">Cancel</button>
-        <button id="settingsSaveButton">Save</button>
-      </div>
-    </div>
-  `;
-    document.body.appendChild(modal2);
-    const cancelButton2 = document.getElementById("settingsCancelButton");
-    const saveButton2 = document.getElementById("settingsSaveButton");
-    const backupEnabledInput = document.getElementById("backupEnabled");
-    const maxBackupsInput = document.getElementById("maxBackups");
-    if (cancelButton2) {
-      cancelButton2.addEventListener("click", () => {
-        if (modal2) {
-          modal2.style.display = "none";
-        }
-      });
-    }
-    if (saveButton2 && backupEnabledInput && maxBackupsInput && modal2) {
-      saveButton2.addEventListener("click", () => {
-        const enabledInput = backupEnabledInput;
-        const maxInput = maxBackupsInput;
-        backupConfig.enabled = enabledInput.checked;
-        backupConfig.maxBackups = parseInt(maxInput.value, 10) || 10;
-        saveBackupConfig();
-        modal2.style.display = "none";
-        showNotification("Settings saved successfully", "success");
-      });
-    }
-    modal2.addEventListener("click", (e) => {
-      if (e.target === modal2) {
-        modal2.style.display = "none";
-      }
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && modal2.style.display === "flex") {
-        modal2.style.display = "none";
-      }
-    });
-    return modal2;
-  }
-  function showSettingsModal() {
-    const modal2 = document.getElementById("settingsModal") || createSettingsModal();
-    const backupEnabledElement = document.getElementById("backupEnabled");
-    const maxBackupsElement = document.getElementById("maxBackups");
-    if (backupEnabledElement) {
-      backupEnabledElement.checked = backupConfig.enabled;
-    }
-    if (maxBackupsElement) {
-      maxBackupsElement.value = backupConfig.maxBackups.toString();
-    }
-    if (modal2) {
-      modal2.style.display = "flex";
-    }
-  }
-  function addSettingsMenuItem() {
-    const actionsMenu = document.getElementById("actionsMenu");
-    if (!actionsMenu) return;
-    const settingsButton = document.createElement("div");
-    settingsButton.id = "actionSettings";
-    settingsButton.className = "action-button";
-    settingsButton.textContent = "Settings";
-    settingsButton.addEventListener("click", () => {
-      actionsMenu.classList.remove("visible");
-      const backdrop = document.querySelector(".menu-backdrop");
-      if (backdrop) backdrop.classList.remove("visible");
-      showSettingsModal();
-    });
-    const exportButton = document.getElementById("actionExportData");
-    if (exportButton) {
-      actionsMenu.insertBefore(settingsButton, exportButton.nextSibling);
-    } else {
-      actionsMenu.appendChild(settingsButton);
-    }
-  }
   function loadData() {
     return __async(this, null, function* () {
       try {
@@ -606,9 +506,10 @@ ${holidaysCsv}
       dlg.innerHTML = `
       <div class="modal-content">
         <h3>Operations</h3>
-        <div style="display:flex; gap:8px; margin-bottom:10px;">
-          <button id="tabExport">Export</button>
-          <button id="tabBackups">Backups</button>
+        <div class="ops-tabs" style="display:flex; gap:8px; margin-bottom:10px;">
+          <button id="tabExport" class="ops-tab active">Export</button>
+          <button id="tabBackups" class="ops-tab">Backups</button>
+          <button id="tabRestore" class="ops-tab">Restore</button>
         </div>
         <div id="opsExport" style="display:none;">
           <div class="form-group">
@@ -638,6 +539,30 @@ ${holidaysCsv}
             <label>Preview:</label>
             <div id="backupMeta" class="form-help"></div>
             <textarea id="backupPreview" style="width:100%; height:180px;"></textarea>
+            <div style="display:flex; gap:8px; margin-top:8px; justify-content:flex-end;">
+              <button id="btnBackupNow">Backup now</button>
+            </div>
+          </div>
+        </div>
+        <div id="opsRestore" style="display:none;">
+          <div class="form-group">
+            <label>Target file:</label>
+            <select id="restoreFileSelect">
+              <option value="employees">employees.json</option>
+              <option value="daysOff">daysOff.json</option>
+              <option value="holidays">holidays.json</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Upload file:</label>
+            <input type="file" id="restoreFileInput" accept=".json,application/json" />
+          </div>
+          <div class="form-group">
+            <label>Or paste JSON content:</label>
+            <textarea id="restorePaste" style="width:100%; height:180px;"></textarea>
+          </div>
+          <div class="form-group" style="display:flex; gap:8px; justify-content:flex-end;">
+            <button id="btnDoRestore">Restore</button>
           </div>
         </div>
         <div class="modal-buttons">
@@ -654,20 +579,33 @@ ${holidaysCsv}
     }
     const tabExport = document.getElementById("tabExport");
     const tabBackups = document.getElementById("tabBackups");
+    const tabRestore = document.getElementById("tabRestore");
     const panelExport = document.getElementById("opsExport");
     const panelBackups = document.getElementById("opsBackups");
+    const panelRestore = document.getElementById("opsRestore");
     const showTab = (tab) => {
+      const setActive = (btn) => {
+        document.querySelectorAll(".ops-tab").forEach((el) => el.classList.remove("active"));
+        if (btn) btn.classList.add("active");
+      };
+      panelExport.style.display = "none";
+      panelBackups.style.display = "none";
+      panelRestore.style.display = "none";
       if (tab === "export") {
         panelExport.style.display = "block";
-        panelBackups.style.display = "none";
-      } else {
-        panelExport.style.display = "none";
+        setActive(tabExport);
+      } else if (tab === "backups") {
         panelBackups.style.display = "block";
+        setActive(tabBackups);
         refreshBackupsList();
+      } else {
+        panelRestore.style.display = "block";
+        setActive(tabRestore);
       }
     };
     if (tabExport) tabExport.onclick = () => showTab("export");
     if (tabBackups) tabBackups.onclick = () => showTab("backups");
+    if (tabRestore) tabRestore.onclick = () => showTab("restore");
     const btnJson = document.getElementById("btnExportJson");
     const btnXml = document.getElementById("btnExportXml");
     const btnCsv = document.getElementById("btnExportCsv");
@@ -675,19 +613,15 @@ ${holidaysCsv}
     const btnCancel = document.getElementById("exportCancel");
     if (btnJson) btnJson.onclick = () => {
       exportCalendarDataAs("json");
-      document.getElementById("exportDialog").style.display = "none";
     };
     if (btnXml) btnXml.onclick = () => {
       exportCalendarDataAs("xml");
-      document.getElementById("exportDialog").style.display = "none";
     };
     if (btnCsv) btnCsv.onclick = () => {
       exportCalendarDataAs("csv");
-      document.getElementById("exportDialog").style.display = "none";
     };
     if (btnIcs) btnIcs.onclick = () => {
       exportIcsForVisible();
-      document.getElementById("exportDialog").style.display = "none";
     };
     if (btnCancel) btnCancel.onclick = () => {
       document.getElementById("exportDialog").style.display = "none";
@@ -696,16 +630,36 @@ ${holidaysCsv}
     if (sel) sel.onchange = () => refreshBackupsList();
     function refreshBackupsList() {
       return __async(this, null, function* () {
+        var _a;
         const list = document.getElementById("backupList");
         const meta = document.getElementById("backupMeta");
         const preview = document.getElementById("backupPreview");
+        const btnBackupNow = document.getElementById("btnBackupNow");
         if (!list || !sel) return;
         list.innerHTML = "Loading...";
         const prefix = sel.value || "";
         try {
+          const currentPath = prefix === "employees" ? "/api/employees.json" : prefix === "daysOff" ? "/api/daysOff.json" : "/api/holidays.json";
+          const curRes = yield fetch(currentPath);
+          if (curRes.ok) {
+            const curText = yield curRes.text();
+            preview.value = curText;
+            meta.textContent = "current";
+          }
           const res = yield fetch(`/api/backups?prefix=${prefix}`);
-          if (!res.ok) throw new Error("Failed to list backups");
-          const files = yield res.json();
+          const rawText = yield res.text();
+          if (!res.ok) {
+            throw new Error(`Failed to list backups (${res.status}): ${rawText}`);
+          }
+          let files;
+          try {
+            files = JSON.parse(rawText);
+          } catch (e) {
+            throw new Error(`Server returned non-JSON: ${rawText}`);
+          }
+          if (!Array.isArray(files)) {
+            throw new Error(`Unexpected response (not array): ${rawText}`);
+          }
           if (files.length === 0) {
             list.innerHTML = "No backups.";
             return;
@@ -729,9 +683,88 @@ ${holidaysCsv}
             });
             list.appendChild(a);
           });
+          if (btnBackupNow) {
+            btnBackupNow.onclick = () => handleBackupNow(prefix);
+          }
         } catch (err) {
-          list.innerHTML = "Error loading backups";
+          list.innerHTML = `Error loading backups: ${(_a = err == null ? void 0 : err.message) != null ? _a : err}`;
         }
+      });
+    }
+    function handleRestore(which, content) {
+      return __async(this, null, function* () {
+        if (!confirm(`Restore ${which}.json from selected backup? This will overwrite current data.`)) return;
+        const path = which === "employees" ? "/api/employees.json" : which === "daysOff" ? "/api/daysOff.json" : "/api/holidays.json";
+        try {
+          const head = yield fetch(path, { method: "GET" });
+          const etag = head.headers.get("ETag") || "";
+          const res = yield fetch(path, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "If-Match": etag
+            },
+            body: content
+          });
+          if (res.status === 412) {
+            const current = res.headers.get("ETag") || "";
+            showNotification("Restore failed due to concurrent changes. Please retry.", "error");
+            return;
+          }
+          if (!res.ok) throw new Error("Restore failed");
+          showNotification("Restore completed.", "success");
+          yield loadData();
+          buildCalendar(currentYear, currentMonth);
+        } catch (e) {
+          console.error(e);
+          showNotification("Restore error", "error");
+        }
+      });
+    }
+    function handleBackupNow(which) {
+      return __async(this, null, function* () {
+        const path = which === "employees" ? "/api/employees.json" : which === "daysOff" ? "/api/daysOff.json" : "/api/holidays.json";
+        try {
+          const getRes = yield fetch(path);
+          const etag = getRes.headers.get("ETag") || "";
+          const body = yield getRes.text();
+          const res = yield fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "If-Match": etag, "X-Max-Backups": String((backupConfig == null ? void 0 : backupConfig.maxBackups) || 10) }, body });
+          if (!res.ok) throw new Error(`Backup failed (${res.status})`);
+          showNotification("Backup created", "success");
+          yield refreshBackupsList();
+        } catch (e) {
+          console.error(e);
+          showNotification("Backup failed", "error");
+        }
+      });
+    }
+    const restoreSelect = document.getElementById("restoreFileSelect");
+    const restoreFileInput = document.getElementById("restoreFileInput");
+    const restorePaste = document.getElementById("restorePaste");
+    const btnDoRestore = document.getElementById("btnDoRestore");
+    if (restoreFileInput) {
+      restoreFileInput.onchange = () => __async(this, null, function* () {
+        const f = restoreFileInput.files && restoreFileInput.files[0];
+        if (!f) return;
+        const text = yield f.text();
+        restorePaste.value = text;
+      });
+    }
+    if (btnDoRestore) {
+      btnDoRestore.onclick = () => __async(this, null, function* () {
+        const which = (restoreSelect == null ? void 0 : restoreSelect.value) || "daysOff";
+        const content = (restorePaste == null ? void 0 : restorePaste.value) || "";
+        if (!content.trim()) {
+          showNotification("Paste JSON or upload a file first", "error");
+          return;
+        }
+        try {
+          JSON.parse(content);
+        } catch (e) {
+          showNotification("Invalid JSON provided", "error");
+          return;
+        }
+        yield handleRestore(which, content);
       });
     }
     showTab(initialTab);
@@ -1037,7 +1070,6 @@ ${holidaysCsv}
       initTooltipSystem();
       updateThemeToggleText();
       buildCalendar(currentYear, currentMonth);
-      addSettingsMenuItem();
       console.log("Application initialized successfully");
     });
   }
@@ -1262,19 +1294,7 @@ ${holidaysCsv}
         cell.classList.add("weekend");
       }
       const pct = percentByDay[day - 1] || 0;
-      if (typeof pct === "number") {
-        const badge = document.createElement("div");
-        badge.style.position = "absolute";
-        badge.style.right = "0";
-        badge.style.bottom = "0";
-        badge.style.fontSize = "9px";
-        badge.style.padding = "0 2px";
-        badge.style.background = pct >= 75 ? "#ff6b6b" : pct >= 50 ? "#ffd36a" : "transparent";
-        badge.style.color = pct >= 50 ? "#000" : "inherit";
-        badge.textContent = pct ? `${pct}%` : "";
-        cell.style.position = "relative";
-        cell.appendChild(badge);
-      }
+      cell.title = `Capacity: ${pct}% off`;
       headerRow.appendChild(cell);
     }
     employeeListDiv.appendChild(headerRow);
@@ -1521,18 +1541,19 @@ ${holidaysCsv}
     const employeeAllowances = employee.allowances || {};
     const allowancePrev = employeeAllowances[String(prevYear)];
     const allowanceCurrMaybe = employeeAllowances[String(currentYear)];
-    const usedPrevYearTotal = calculateUsedDays(username, prevYear).total;
+    const usedPrev = calculateUsedDays(username, prevYear);
     const usedCurr = calculateUsedDays(username, currentYear);
     const effPrevAllowance = Number(allowancePrev) || 0;
     const effCurrAllowance = allowanceCurrMaybe !== void 0 ? Number(allowanceCurrMaybe) || 0 : Number(allowancePrev) || 0;
-    const prevUnused = Math.max(0, effPrevAllowance - usedPrevYearTotal);
-    const availableNow = Math.max(0, effCurrAllowance + prevUnused - (usedCurr.carryover + usedCurr.base));
+    const prevUnused = Math.max(0, effPrevAllowance - usedPrev.total - usedCurr.carryover);
+    const currRemaining = Math.max(0, effCurrAllowance - usedCurr.base - usedCurr.nextYearCarryFromThisYear);
+    const availableNow = Math.max(0, currRemaining + prevUnused);
     statsHtml += `<h4>Allowance & Balance</h4>`;
     statsHtml += '<div class="stats-table">';
     statsHtml += `<div class="form-group">
     <button id="openAllowanceDialogBtn">Set Allowance for ${currentYear}</button>
-    <div class="form-help">Prev ${prevYear}: ${effPrevAllowance} (used ${usedPrevYearTotal}, carry ${prevUnused})</div>
-    <div class="form-help">Curr ${currentYear}: ${allowanceCurrMaybe != null ? allowanceCurrMaybe : "(fallback to prev)"} | Used carry ${usedCurr.carryover}, used current ${usedCurr.base}, available ${availableNow}</div>
+    <div class="form-help">Prev ${prevYear}: ${effPrevAllowance} (used ${usedPrev.total} + used in ${currentYear} as carry ${usedCurr.carryover} \u2192 remaining ${prevUnused})</div>
+    <div class="form-help">Curr ${currentYear}: ${allowanceCurrMaybe != null ? allowanceCurrMaybe : "(fallback to prev)"} | Used current ${usedCurr.base}, scheduled to next year (carry) ${usedCurr.nextYearCarryFromThisYear} \u2192 remaining base ${currRemaining}; Available now ${availableNow}</div>
   </div>`;
     statsHtml += "</div>";
     userStatsContent.innerHTML = statsHtml;
@@ -1563,14 +1584,20 @@ ${holidaysCsv}
     let total = 0;
     let carryover = 0;
     let base = 0;
+    let nextYearCarryFromThisYear = 0;
     userDaysOff.forEach((entry) => {
+      if (entry.type !== "Normal") return;
       const d = parseLocalDate(entry.date);
-      if (d.getFullYear() !== year) return;
-      total += 1;
-      if (entry.useCarryover) carryover += 1;
-      else base += 1;
+      const y = d.getFullYear();
+      if (y === year) {
+        total += 1;
+        if (entry.useCarryover) carryover += 1;
+        else base += 1;
+      } else if (y === year + 1 && entry.useCarryover) {
+        nextYearCarryFromThisYear += 1;
+      }
     });
-    return { total, carryover, base };
+    return { total, carryover, base, nextYearCarryFromThisYear };
   }
   function calculateMonthlyStats(username, year) {
     const userDaysOff = daysOffData[username] || [];

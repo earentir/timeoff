@@ -460,6 +460,8 @@ function saveBackupConfig() {
 function createSettingsModal() {
   // Check if the modal already exists
   if (document.getElementById("settingsModal")) {
+    const existing = document.getElementById("settingsModal") as HTMLDivElement;
+    if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
     return;
   }
 
@@ -488,7 +490,9 @@ function createSettingsModal() {
     </div>
   `;
 
-  document.body.appendChild(modal);
+  // We no longer use this legacy settings modal; keep function for compatibility
+  // but do not append to DOM.
+  // document.body.appendChild(modal);
 
   // Add event listeners
   const cancelButton = document.getElementById("settingsCancelButton");
@@ -539,7 +543,9 @@ function createSettingsModal() {
 
 // Function to show the settings modal
 function showSettingsModal() {
-  const modal = document.getElementById("settingsModal") || createSettingsModal();
+  // Redirect to unified Operations dialog Backups tab
+  showOperationsDialog("backups");
+  return;
 
   // Type assertions to tell TypeScript these are input elements
   const backupEnabledElement = document.getElementById("backupEnabled") as HTMLInputElement;
@@ -574,8 +580,8 @@ function addSettingsMenuItem() {
     actionsMenu.classList.remove("visible");
     const backdrop = document.querySelector(".menu-backdrop");
     if (backdrop) backdrop.classList.remove("visible");
-
-    showSettingsModal();
+    // Open unified dialog on Backups tab instead of legacy settings modal
+    showOperationsDialog("backups");
   });
 
   // Add after export data button if it exists, otherwise at the end
@@ -780,9 +786,9 @@ function setupQuickActions() {
     updateThemeToggleText();
   });
 
-  // Export Data action
+  // Export/Backup/Restore unified dialog
   actionExportData.addEventListener("click", () => {
-    exportCalendarData();
+    showOperationsDialog("export");
   });
 }
 
@@ -809,14 +815,10 @@ function exportCalendarData() {
 
     const exportFileDefaultName = `calendar-export-${currentYear}-${currentMonth + 1}.json`;
 
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-
-    showNotification("Calendar data exported successfully", "success");
+    // Instead of exporting immediately, open the unified dialog
+    showOperationsDialog("export");
   } catch (error) {
-    console.error("Error exporting data:", error);
+    console.error("Error opening export dialog:", error);
     showNotification("Failed to export data", "error");
   }
 }
@@ -982,9 +984,10 @@ function showOperationsDialog(initialTab: "export" | "backups" = "export") {
     dlg.innerHTML = `
       <div class="modal-content">
         <h3>Operations</h3>
-        <div style="display:flex; gap:8px; margin-bottom:10px;">
-          <button id="tabExport">Export</button>
-          <button id="tabBackups">Backups</button>
+        <div class="ops-tabs" style="display:flex; gap:8px; margin-bottom:10px;">
+          <button id="tabExport" class="ops-tab active">Export</button>
+          <button id="tabBackups" class="ops-tab">Backups</button>
+          <button id="tabRestore" class="ops-tab">Restore</button>
         </div>
         <div id="opsExport" style="display:none;">
           <div class="form-group">
@@ -1014,6 +1017,30 @@ function showOperationsDialog(initialTab: "export" | "backups" = "export") {
             <label>Preview:</label>
             <div id="backupMeta" class="form-help"></div>
             <textarea id="backupPreview" style="width:100%; height:180px;"></textarea>
+            <div style="display:flex; gap:8px; margin-top:8px; justify-content:flex-end;">
+              <button id="btnBackupNow">Backup now</button>
+            </div>
+          </div>
+        </div>
+        <div id="opsRestore" style="display:none;">
+          <div class="form-group">
+            <label>Target file:</label>
+            <select id="restoreFileSelect">
+              <option value="employees">employees.json</option>
+              <option value="daysOff">daysOff.json</option>
+              <option value="holidays">holidays.json</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Upload file:</label>
+            <input type="file" id="restoreFileInput" accept=".json,application/json" />
+          </div>
+          <div class="form-group">
+            <label>Or paste JSON content:</label>
+            <textarea id="restorePaste" style="width:100%; height:180px;"></textarea>
+          </div>
+          <div class="form-group" style="display:flex; gap:8px; justify-content:flex-end;">
+            <button id="btnDoRestore">Restore</button>
           </div>
         </div>
         <div class="modal-buttons">
@@ -1031,30 +1058,35 @@ function showOperationsDialog(initialTab: "export" | "backups" = "export") {
   }
   const tabExport = document.getElementById("tabExport") as HTMLButtonElement;
   const tabBackups = document.getElementById("tabBackups") as HTMLButtonElement;
+  const tabRestore = document.getElementById("tabRestore") as HTMLButtonElement;
   const panelExport = document.getElementById("opsExport") as HTMLDivElement;
   const panelBackups = document.getElementById("opsBackups") as HTMLDivElement;
+  const panelRestore = document.getElementById("opsRestore") as HTMLDivElement;
   const showTab = (tab: "export" | "backups") => {
-    if (tab === "export") {
-      panelExport.style.display = "block";
-      panelBackups.style.display = "none";
-    } else {
-      panelExport.style.display = "none";
-      panelBackups.style.display = "block";
-      refreshBackupsList();
-    }
+    const setActive = (btn?: HTMLButtonElement) => {
+      document.querySelectorAll('.ops-tab').forEach(el => el.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+    };
+    panelExport.style.display = "none";
+    panelBackups.style.display = "none";
+    panelRestore.style.display = "none";
+    if (tab === "export") { panelExport.style.display = "block"; setActive(tabExport); }
+    else if (tab === "backups") { panelBackups.style.display = "block"; setActive(tabBackups); refreshBackupsList(); }
+    else { panelRestore.style.display = "block"; setActive(tabRestore); }
   };
   if (tabExport) tabExport.onclick = () => showTab("export");
   if (tabBackups) tabBackups.onclick = () => showTab("backups");
+  if (tabRestore) tabRestore.onclick = () => showTab("restore" as any);
 
   const btnJson = document.getElementById("btnExportJson");
   const btnXml = document.getElementById("btnExportXml");
   const btnCsv = document.getElementById("btnExportCsv");
   const btnIcs = document.getElementById("btnExportIcs");
   const btnCancel = document.getElementById("exportCancel");
-  if (btnJson) btnJson.onclick = () => { exportCalendarDataAs("json"); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
-  if (btnXml) btnXml.onclick = () => { exportCalendarDataAs("xml"); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
-  if (btnCsv) btnCsv.onclick = () => { exportCalendarDataAs("csv"); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
-  if (btnIcs) btnIcs.onclick = () => { exportIcsForVisible(); (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
+  if (btnJson) btnJson.onclick = () => { exportCalendarDataAs("json"); };
+  if (btnXml) btnXml.onclick = () => { exportCalendarDataAs("xml"); };
+  if (btnCsv) btnCsv.onclick = () => { exportCalendarDataAs("csv"); };
+  if (btnIcs) btnIcs.onclick = () => { exportIcsForVisible(); };
   if (btnCancel) btnCancel.onclick = () => { (document.getElementById("exportDialog") as HTMLDivElement).style.display = "none"; };
 
   // Backups wiring
@@ -1064,13 +1096,32 @@ function showOperationsDialog(initialTab: "export" | "backups" = "export") {
     const list = document.getElementById("backupList") as HTMLDivElement;
     const meta = document.getElementById("backupMeta") as HTMLDivElement;
     const preview = document.getElementById("backupPreview") as HTMLTextAreaElement;
+    const btnBackupNow = document.getElementById("btnBackupNow") as HTMLButtonElement;
     if (!list || !sel) return;
     list.innerHTML = "Loading...";
     const prefix = (sel.value || "");
     try {
+      // Always load current file content into preview first
+      const currentPath = prefix === 'employees' ? '/api/employees.json' : (prefix === 'daysOff' ? '/api/daysOff.json' : '/api/holidays.json');
+      const curRes = await fetch(currentPath);
+      if (curRes.ok) {
+        const curText = await curRes.text();
+        preview.value = curText;
+        meta.textContent = 'current';
+      }
+
       const res = await fetch(`/api/backups?prefix=${prefix}`);
-      if (!res.ok) throw new Error("Failed to list backups");
-      const files: string[] = await res.json();
+      const rawText = await res.text();
+      if (!res.ok) {
+        throw new Error(`Failed to list backups (${res.status}): ${rawText}`);
+      }
+      let files: any;
+      try { files = JSON.parse(rawText); } catch (e) {
+        throw new Error(`Server returned non-JSON: ${rawText}`);
+      }
+      if (!Array.isArray(files)) {
+        throw new Error(`Unexpected response (not array): ${rawText}`);
+      }
       if (files.length === 0) { list.innerHTML = "No backups."; return; }
       list.innerHTML = "";
       files.forEach(fn => {
@@ -1088,9 +1139,85 @@ function showOperationsDialog(initialTab: "export" | "backups" = "export") {
         };
         list.appendChild(a);
       });
-    } catch (err) {
-      list.innerHTML = "Error loading backups";
+
+      if (btnBackupNow) {
+        btnBackupNow.onclick = () => handleBackupNow(prefix);
+      }
+    } catch (err: any) {
+      list.innerHTML = `Error loading backups: ${err?.message ?? err}`;
     }
+  }
+
+  async function handleRestore(which: string, content: string) {
+    if (!confirm(`Restore ${which}.json from selected backup? This will overwrite current data.`)) return;
+    const path = which === 'employees' ? '/api/employees.json' : (which === 'daysOff' ? '/api/daysOff.json' : '/api/holidays.json');
+    try {
+      // fetch current ETag
+      const head = await fetch(path, { method: 'GET' });
+      const etag = head.headers.get('ETag') || '';
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'If-Match': etag,
+        },
+        body: content,
+      });
+      if (res.status === 412) {
+        const current = res.headers.get('ETag') || '';
+        showNotification('Restore failed due to concurrent changes. Please retry.', 'error');
+        return;
+      }
+      if (!res.ok) throw new Error('Restore failed');
+      showNotification('Restore completed.', 'success');
+      // refresh in-memory data
+      await loadData();
+      buildCalendar(currentYear, currentMonth);
+    } catch (e) {
+      console.error(e);
+      showNotification('Restore error', 'error');
+    }
+  }
+
+  async function handleBackupNow(which: string) {
+    const path = which === 'employees' ? '/api/employees.json' : (which === 'daysOff' ? '/api/daysOff.json' : '/api/holidays.json');
+    try {
+      const getRes = await fetch(path);
+      const etag = getRes.headers.get('ETag') || '';
+      const body = await getRes.text();
+      // POST same content to trigger backup creation
+      const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'If-Match': etag, 'X-Max-Backups': String((backupConfig as any)?.maxBackups || 10) }, body });
+      if (!res.ok) throw new Error(`Backup failed (${res.status})`);
+      showNotification('Backup created', 'success');
+      await refreshBackupsList();
+    } catch (e) {
+      console.error(e);
+      showNotification('Backup failed', 'error');
+    }
+  }
+
+  // Restore tab wiring
+  const restoreSelect = document.getElementById('restoreFileSelect') as HTMLSelectElement;
+  const restoreFileInput = document.getElementById('restoreFileInput') as HTMLInputElement;
+  const restorePaste = document.getElementById('restorePaste') as HTMLTextAreaElement;
+  const btnDoRestore = document.getElementById('btnDoRestore') as HTMLButtonElement;
+  if (restoreFileInput) {
+    restoreFileInput.onchange = async () => {
+      const f = restoreFileInput.files && restoreFileInput.files[0];
+      if (!f) return;
+      const text = await f.text();
+      restorePaste.value = text;
+    };
+  }
+  if (btnDoRestore) {
+    btnDoRestore.onclick = async () => {
+      const which = restoreSelect?.value || 'daysOff';
+      const content = restorePaste?.value || '';
+      if (!content.trim()) { showNotification('Paste JSON or upload a file first', 'error'); return; }
+      // Validate JSON before POST
+      try { JSON.parse(content); } catch { showNotification('Invalid JSON provided', 'error'); return; }
+      await handleRestore(which, content);
+    };
   }
 
   // Show requested tab
@@ -1537,8 +1664,7 @@ async function initApp() {
   // Initialize calendar with current month/year
   buildCalendar(currentYear, currentMonth);
 
-    // Add settings to action menu
-    addSettingsMenuItem();
+    // Remove legacy settings button injection (unified dialog handles everything)
 
   console.log("Application initialized successfully");
 }
@@ -1886,21 +2012,9 @@ function buildCalendar(year, month) {
     if (cellDate.getDay() === 0 || cellDate.getDay() === 6) {
       cell.classList.add("weekend");
     }
-    // Add capacity indicator as a small badge on header cell
+    // Add capacity info as a tooltip on header cell
     const pct = percentByDay[day - 1] || 0;
-    if (typeof pct === 'number') {
-      const badge = document.createElement('div');
-      badge.style.position = 'absolute';
-      badge.style.right = '0';
-      badge.style.bottom = '0';
-      badge.style.fontSize = '9px';
-      badge.style.padding = '0 2px';
-      badge.style.background = pct >= 75 ? '#ff6b6b' : (pct >= 50 ? '#ffd36a' : 'transparent');
-      badge.style.color = pct >= 50 ? '#000' : 'inherit';
-      badge.textContent = pct ? `${pct}%` : '';
-      cell.style.position = 'relative';
-      cell.appendChild(badge);
-    }
+    cell.title = `Capacity: ${pct}% off`;
     headerRow.appendChild(cell);
   }
 
@@ -2201,21 +2315,24 @@ function showUserStatistics(username, event) {
   const allowancePrev = employeeAllowances[String(prevYear)];
   const allowanceCurrMaybe = employeeAllowances[String(currentYear)];
 
-  const usedPrevYearTotal = calculateUsedDays(username, prevYear).total;
+  const usedPrev = calculateUsedDays(username, prevYear);
   const usedCurr = calculateUsedDays(username, currentYear);
   const effPrevAllowance = Number(allowancePrev) || 0;
   const effCurrAllowance = (allowanceCurrMaybe !== undefined)
     ? (Number(allowanceCurrMaybe) || 0)
     : (Number(allowancePrev) || 0);
-  const prevUnused = Math.max(0, effPrevAllowance - usedPrevYearTotal);
-  const availableNow = Math.max(0, effCurrAllowance + prevUnused - (usedCurr.carryover + usedCurr.base));
+  // Previous year remaining must also subtract any carryover used this year
+  const prevUnused = Math.max(0, effPrevAllowance - usedPrev.total - usedCurr.carryover);
+  // Current year remaining subtracts base used this year and any of this year's allocation used next year as carryover
+  const currRemaining = Math.max(0, effCurrAllowance - usedCurr.base - usedCurr.nextYearCarryFromThisYear);
+  const availableNow = Math.max(0, currRemaining + prevUnused);
 
   statsHtml += `<h4>Allowance & Balance</h4>`;
   statsHtml += '<div class="stats-table">';
   statsHtml += `<div class="form-group">
     <button id="openAllowanceDialogBtn">Set Allowance for ${currentYear}</button>
-    <div class="form-help">Prev ${prevYear}: ${effPrevAllowance} (used ${usedPrevYearTotal}, carry ${prevUnused})</div>
-    <div class="form-help">Curr ${currentYear}: ${allowanceCurrMaybe ?? '(fallback to prev)'} | Used carry ${usedCurr.carryover}, used current ${usedCurr.base}, available ${availableNow}</div>
+    <div class="form-help">Prev ${prevYear}: ${effPrevAllowance} (used ${usedPrev.total} + used in ${currentYear} as carry ${usedCurr.carryover} → remaining ${prevUnused})</div>
+    <div class="form-help">Curr ${currentYear}: ${allowanceCurrMaybe ?? '(fallback to prev)'} | Used current ${usedCurr.base}, scheduled to next year (carry) ${usedCurr.nextYearCarryFromThisYear} → remaining base ${currRemaining}; Available now ${availableNow}</div>
   </div>`;
   statsHtml += "</div>";
 
@@ -2285,18 +2402,25 @@ function calculateYearlyStats(username: string, year: number): { [type: string]:
 /**
  * Calculate used days per year broken down by carryover vs current-year allowance
  */
-function calculateUsedDays(username: string, year: number): { total: number; carryover: number; base: number } {
+function calculateUsedDays(username: string, year: number): { total: number; carryover: number; base: number; nextYearCarryFromThisYear: number } {
   const userDaysOff = daysOffData[username] || [];
   let total = 0;
-  let carryover = 0;
-  let base = 0;
+  let carryover = 0; // used in 'year' from last year's allowance
+  let base = 0;      // used in 'year' from this year's allowance
+  let nextYearCarryFromThisYear = 0; // consumed next year but originating from this year's allowance
   userDaysOff.forEach((entry) => {
+    if (entry.type !== 'Normal') return; // only Normal affects allowance
     const d = parseLocalDate(entry.date);
-    if (d.getFullYear() !== year) return;
-    total += 1;
-    if ((entry as any).useCarryover) carryover += 1; else base += 1;
+    const y = d.getFullYear();
+    if (y === year) {
+      total += 1;
+      if ((entry as any).useCarryover) carryover += 1; else base += 1;
+    } else if (y === year + 1 && (entry as any).useCarryover) {
+      // This is a carryover usage in next year; it should reduce this year's remaining base
+      nextYearCarryFromThisYear += 1;
+    }
   });
-  return { total, carryover, base };
+  return { total, carryover, base, nextYearCarryFromThisYear };
 }
 
 /**

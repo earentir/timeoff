@@ -83,7 +83,15 @@ func handleEmployees(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		serveJSONFile(w, filePath)
 	case http.MethodPost:
-		updateJSONFile(w, r, filePath)
+		// Align with other endpoints: create versioned backups in backupDir
+		maxBackupsStr := r.Header.Get("X-Max-Backups")
+		maxBackups := defaultMaxBackups
+		if maxBackupsStr != "" {
+			if val, err := strconv.Atoi(maxBackupsStr); err == nil && val > 0 {
+				maxBackups = val
+			}
+		}
+		updateJSONFileWithBackup(w, r, filePath, maxBackups)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -450,6 +458,10 @@ func listBackups(filePrefix string) ([]string, error) {
 		}
 	}
 
+	// Ensure we return an empty slice instead of nil so JSON encodes to [] not null
+	if backups == nil {
+		backups = []string{}
+	}
 	return backups, nil
 }
 
