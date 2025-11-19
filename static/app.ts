@@ -16,6 +16,7 @@ interface Employee {
 interface DayOffTypeConfig {
   background: string;
   foreground: string;
+  fromPool?: boolean;
 }
 
 // Non-holiday day-off entries.
@@ -77,6 +78,7 @@ interface EmployeesData {
 interface DayOffTypeConfig {
   background: string;
   foreground: string;
+  fromPool?: boolean;
 }
 // Global state variables.
 let employeesData: EmployeesData;
@@ -132,6 +134,12 @@ const backupConfig = {
   maxBackups: 3,  // Maximum number of backups to keep for each file type
   enabled: true  // Whether backups are enabled
 };
+
+function isFromPoolType(type: string): boolean {
+  if (!employeesData || !employeesData.dayOffTypes) return false;
+  const config = employeesData.dayOffTypes[type];
+  return Boolean(config && config.fromPool);
+}
 
 /**
  * Close the modal.
@@ -2314,7 +2322,7 @@ function showUserStatistics(username, event) {
   const userDaysForYear = (daysOffData[username] || []).filter(e => parseLocalDate(e.date).getFullYear() === currentYear);
   userDaysForYear.forEach(e => {
     const d = parseLocalDate(e.date);
-    if (e.type === 'Normal' && (e as any).useCarryover) {
+    if (isFromPoolType(e.type) && (e as any).useCarryover) {
       monthlyCarry[d.getMonth()] += 1;
     }
   });
@@ -2456,7 +2464,7 @@ function calculateUsedDays(username: string, year: number): { total: number; car
   let base = 0;      // used in 'year' from this year's allowance
   let nextYearCarryFromThisYear = 0; // consumed next year but originating from this year's allowance
   userDaysOff.forEach((entry) => {
-    if (entry.type !== 'Normal') return; // only Normal affects allowance
+    if (!isFromPoolType(entry.type)) return; // only from-pool types affect allowance
     const d = parseLocalDate(entry.date);
     const y = d.getFullYear();
     if (y === year) {
