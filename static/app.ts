@@ -2175,6 +2175,15 @@ function buildCalendar(year, month) {
       showUserStatistics(employee.username, e);
     });
 
+    // Add mouseenter/mouseleave handlers for reliable hover state management
+    // This ensures hover works correctly after right-click modal interactions
+    row.addEventListener("mouseenter", () => {
+      row.classList.add("hover");
+    });
+    row.addEventListener("mouseleave", () => {
+      row.classList.remove("hover");
+    });
+
     row.appendChild(nameDiv);
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -2491,6 +2500,13 @@ function calculatePairConflicts(
  */
 function closeUserStatsModal() {
   userStatsModal.style.display = 'none';
+
+  // Force a hover state reset by removing all .hover classes from rows.
+  // This fixes a browser quirk where hover states get "stuck" after a right-click
+  // triggered modal is closed, because the contextmenu event chain was interrupted.
+  document.querySelectorAll('.row.hover').forEach(row => {
+    row.classList.remove('hover');
+  });
 }
 
 /**

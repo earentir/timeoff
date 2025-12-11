@@ -228,17 +228,22 @@ body.dark .capacity-row .capacity-percent { color: #ddd; }
 
 /* Hover effect for rows */
 /* Hover highlight only within the grid area, not full width */
-.row:hover {
+/* Use both CSS :hover and JS-managed .hover class for better reliability */
+.row:hover,
+.row.hover {
   background-color: transparent;
 }
 .row:hover .day-cell,
-.row:hover .employee-name {
+.row:hover .employee-name,
+.row.hover .day-cell,
+.row.hover .employee-name {
   background-color: #ffe4b5;
   color: #000;
 }
 
 /* Ensure weekend cells keep their styling on row hover */
-.row:hover .weekend {
+.row:hover .weekend,
+.row.hover .weekend {
   background-color: inherit;
   color: inherit;
 }

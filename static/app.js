@@ -1432,6 +1432,12 @@ ${holidaysCsv}
       nameDiv.addEventListener("contextmenu", (e) => {
         showUserStatistics(employee.username, e);
       });
+      row.addEventListener("mouseenter", () => {
+        row.classList.add("hover");
+      });
+      row.addEventListener("mouseleave", () => {
+        row.classList.remove("hover");
+      });
       row.appendChild(nameDiv);
       for (let day = 1; day <= daysInMonth; day++) {
         const cell = document.createElement("div");
@@ -1662,6 +1668,9 @@ ${holidaysCsv}
   }
   function closeUserStatsModal() {
     userStatsModal.style.display = "none";
+    document.querySelectorAll(".row.hover").forEach((row) => {
+      row.classList.remove("hover");
+    });
   }
   function calculateYearlyStats(username, year) {
     const userDaysOff = daysOffData[username] || [];
