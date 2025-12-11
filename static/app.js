@@ -1,4 +1,20 @@
 (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __propIsEnum = Object.prototype.propertyIsEnumerable;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __spreadValues = (a, b) => {
+    for (var prop in b || (b = {}))
+      if (__hasOwnProp.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    if (__getOwnPropSymbols)
+      for (var prop of __getOwnPropSymbols(b)) {
+        if (__propIsEnum.call(b, prop))
+          __defNormalProp(a, prop, b[prop]);
+      }
+    return a;
+  };
   var __async = (__this, __arguments, generator) => {
     return new Promise((resolve, reject) => {
       var fulfilled = (value) => {
@@ -222,12 +238,38 @@
       try {
         console.log(`Saving data for ${username}...`);
         const maxBackupsHeader = backupConfig.enabled ? backupConfig.maxBackups.toString() : "0";
-        const [etagDaysRes, etagHolRes] = yield Promise.all([
+        const [latestDaysOffRes, latestHolidaysRes] = yield Promise.all([
           fetch("/api/daysOff.json"),
           fetch("/api/holidays.json")
         ]);
-        const etagDays = etagDaysRes.headers.get("ETag") || "";
-        const etagHol = etagHolRes.headers.get("ETag") || "";
+        if (!latestDaysOffRes.ok || !latestHolidaysRes.ok) {
+          throw new Error("Failed to fetch latest data from server");
+        }
+        const etagDays = latestDaysOffRes.headers.get("ETag") || "";
+        const etagHol = latestHolidaysRes.headers.get("ETag") || "";
+        const latestDaysOff = yield latestDaysOffRes.json();
+        const latestHolidays = yield latestHolidaysRes.json();
+        const mergedDaysOff = __spreadValues({}, latestDaysOff);
+        mergedDaysOff[username] = daysOffData[username] || [];
+        for (const otherUser of Object.keys(latestDaysOff)) {
+          if (otherUser !== username) {
+            daysOffData[otherUser] = latestDaysOff[otherUser];
+          }
+        }
+        const mergedHolidays = __spreadValues({}, latestHolidays);
+        if (holidaysData.holidays && Array.isArray(holidaysData.holidays)) {
+          const serverHolidayDates = new Set(
+            (latestHolidays.holidays || []).map((h) => h.date)
+          );
+          const localHolidayDates = new Set(
+            holidaysData.holidays.map((h) => h.date)
+          );
+          mergedHolidays.holidays = [
+            ...latestHolidays.holidays || [],
+            ...holidaysData.holidays.filter((h) => !serverHolidayDates.has(h.date))
+          ];
+          holidaysData.holidays = mergedHolidays.holidays;
+        }
         const [daysOffResponse, holidaysResponse] = yield Promise.all([
           fetch("/api/daysOff.json", {
             method: "POST",
@@ -236,7 +278,7 @@
               "X-Max-Backups": maxBackupsHeader,
               "If-Match": etagDays
             },
-            body: JSON.stringify(daysOffData)
+            body: JSON.stringify(mergedDaysOff)
           }),
           fetch("/api/holidays.json", {
             method: "POST",
@@ -245,15 +287,23 @@
               "X-Max-Backups": maxBackupsHeader,
               "If-Match": etagHol
             },
-            body: JSON.stringify(holidaysData)
+            body: JSON.stringify(mergedHolidays)
           })
         ]);
         if (!daysOffResponse.ok) {
           const txt = yield daysOffResponse.text();
+          if (daysOffResponse.status === 412) {
+            console.log("Concurrent modification detected, retrying...");
+            return saveData(username);
+          }
           throw new Error(`daysOff save failed (${daysOffResponse.status}): ${txt}`);
         }
         if (!holidaysResponse.ok) {
           const txt = yield holidaysResponse.text();
+          if (holidaysResponse.status === 412) {
+            console.log("Concurrent modification detected, retrying...");
+            return saveData(username);
+          }
           throw new Error(`holidays save failed (${holidaysResponse.status}): ${txt}`);
         }
         console.log(`Data saved successfully for ${username}`);

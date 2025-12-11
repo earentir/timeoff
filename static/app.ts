@@ -340,6 +340,10 @@ function updatePairedEmployeeCalendar(username: string, isoDate: string) {
 
 /**
  * Save data to the server
+ * 
+ * This function fetches the latest data from the server and merges only the
+ * current user's changes before saving. This prevents overwriting other users'
+ * changes that may have occurred since the page was loaded.
  */
 async function saveData(username) {
   try {
@@ -348,13 +352,57 @@ async function saveData(username) {
     // Only send backup config if backups are enabled
     const maxBackupsHeader = backupConfig.enabled ? backupConfig.maxBackups.toString() : "0";
 
-    // Get current ETags for optimistic concurrency
-    const [etagDaysRes, etagHolRes] = await Promise.all([
+    // Fetch latest data from server to merge with our changes
+    // This prevents overwriting other users' changes made since page load
+    const [latestDaysOffRes, latestHolidaysRes] = await Promise.all([
       fetch('/api/daysOff.json'),
       fetch('/api/holidays.json')
     ]);
-    const etagDays = etagDaysRes.headers.get('ETag') || '';
-    const etagHol = etagHolRes.headers.get('ETag') || '';
+
+    if (!latestDaysOffRes.ok || !latestHolidaysRes.ok) {
+      throw new Error("Failed to fetch latest data from server");
+    }
+
+    const etagDays = latestDaysOffRes.headers.get('ETag') || '';
+    const etagHol = latestHolidaysRes.headers.get('ETag') || '';
+
+    // Parse the latest server data
+    const latestDaysOff = await latestDaysOffRes.json();
+    const latestHolidays = await latestHolidaysRes.json();
+
+    // Merge: apply ONLY the current user's changes to the latest server data
+    // This preserves other users' changes while applying our own
+    const mergedDaysOff = { ...latestDaysOff };
+    mergedDaysOff[username] = daysOffData[username] || [];
+
+    // Also update our local cache with other users' changes we just fetched
+    // This keeps our local state in sync for the next operation
+    for (const otherUser of Object.keys(latestDaysOff)) {
+      if (otherUser !== username) {
+        daysOffData[otherUser] = latestDaysOff[otherUser];
+      }
+    }
+
+    // For holidays, merge new holidays added locally that don't exist on server
+    // and preserve server holidays that we don't have locally
+    const mergedHolidays = { ...latestHolidays };
+    if (holidaysData.holidays && Array.isArray(holidaysData.holidays)) {
+      const serverHolidayDates = new Set(
+        (latestHolidays.holidays || []).map((h: any) => h.date)
+      );
+      const localHolidayDates = new Set(
+        holidaysData.holidays.map((h: any) => h.date)
+      );
+      
+      // Combine holidays: keep server holidays, add any local-only holidays
+      mergedHolidays.holidays = [
+        ...(latestHolidays.holidays || []),
+        ...holidaysData.holidays.filter((h: any) => !serverHolidayDates.has(h.date))
+      ];
+      
+      // Update local cache with server holidays we didn't have
+      holidaysData.holidays = mergedHolidays.holidays;
+    }
 
     const [daysOffResponse, holidaysResponse] = await Promise.all([
       fetch("/api/daysOff.json", {
@@ -364,7 +412,7 @@ async function saveData(username) {
           "X-Max-Backups": maxBackupsHeader,
           "If-Match": etagDays
         },
-        body: JSON.stringify(daysOffData)
+        body: JSON.stringify(mergedDaysOff)
       }),
       fetch("/api/holidays.json", {
         method: "POST",
@@ -373,16 +421,25 @@ async function saveData(username) {
           "X-Max-Backups": maxBackupsHeader,
           "If-Match": etagHol
         },
-        body: JSON.stringify(holidaysData)
+        body: JSON.stringify(mergedHolidays)
       })
     ]);
 
     if (!daysOffResponse.ok) {
       const txt = await daysOffResponse.text();
+      // If we get a conflict (412), retry once with fresh data
+      if (daysOffResponse.status === 412) {
+        console.log("Concurrent modification detected, retrying...");
+        return saveData(username);
+      }
       throw new Error(`daysOff save failed (${daysOffResponse.status}): ${txt}`);
     }
     if (!holidaysResponse.ok) {
       const txt = await holidaysResponse.text();
+      if (holidaysResponse.status === 412) {
+        console.log("Concurrent modification detected, retrying...");
+        return saveData(username);
+      }
       throw new Error(`holidays save failed (${holidaysResponse.status}): ${txt}`);
     }
 
