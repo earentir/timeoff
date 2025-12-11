@@ -78,6 +78,11 @@
     enabled: true
     // Whether backups are enabled
   };
+  function isFromPoolType(type) {
+    if (!employeesData || !employeesData.dayOffTypes) return false;
+    const config = employeesData.dayOffTypes[type];
+    return Boolean(config && config.fromPool);
+  }
   function closeModal() {
     modal.style.display = "none";
     modalContext = null;
@@ -1589,7 +1594,7 @@ ${holidaysCsv}
     const userDaysForYear = (daysOffData[username] || []).filter((e) => parseLocalDate(e.date).getFullYear() === currentYear);
     userDaysForYear.forEach((e) => {
       const d = parseLocalDate(e.date);
-      if (e.type === "Normal" && e.useCarryover) {
+      if (isFromPoolType(e.type) && e.useCarryover) {
         monthlyCarry[d.getMonth()] += 1;
       }
     });
@@ -1676,7 +1681,7 @@ ${holidaysCsv}
     let base = 0;
     let nextYearCarryFromThisYear = 0;
     userDaysOff.forEach((entry) => {
-      if (entry.type !== "Normal") return;
+      if (!isFromPoolType(entry.type)) return;
       const d = parseLocalDate(entry.date);
       const y = d.getFullYear();
       if (y === year) {
